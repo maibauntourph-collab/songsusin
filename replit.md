@@ -24,11 +24,13 @@ python server.py
 ```
 
 ## Features
-- **Guide Mode**: Broadcast audio with real-time speech recognition (Korean)
+- **Guide Mode**: Broadcast audio with real-time speech recognition (Korean), see live transcript with English translation
 - **Tourist Mode**: Receive audio stream and translated subtitles (English, Korean, Japanese, Chinese)
 - **Place Registration**: Add places manually or via Excel/CSV upload
 - **Audio Recording**: Automatic server-side recording of guide sessions
 - **Transcript History**: View and export past transcriptions
+- **AI Summarization**: Generate AI-powered summaries of tour sessions using OpenAI
+- **Session Management**: Download transcript logs, clear session data
 
 ## API Endpoints
 - `GET /` - Main application page
@@ -38,6 +40,9 @@ python server.py
 - `GET /history` - Get transcript history
 - `GET /export_places` - Export places to Excel
 - `GET /api/recordings` - List audio recordings
+- `POST /summarize` - Generate AI summary of session transcripts
+- `GET /download_transcript` - Download full transcript as text file
+- `POST /clear_session` - Clear all session transcripts
 
 ## Socket.IO Events
 - `join_room` - Join as guide or tourist
