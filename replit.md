@@ -67,3 +67,15 @@ The system uses MediaSource Extensions (MSE) API for continuous audio streaming:
 - Fixed audio reconnect loop: Added manual Start/Stop buttons for tourists
 - Added Auto-detect toggle option (off by default)
 - Created AUDIO_LOOP_FIX.md with bilingual documentation
+- Added socket event guards to prevent stale data processing after audio stop
+
+## Tourist Audio Control
+The tourist mode now uses manual audio controls to prevent reconnection loops:
+- **Start Audio**: Initializes fresh audio connection
+- **Stop Audio**: Cleanly shuts down all audio resources
+- **Auto-detect toggle**: Optional automatic reconnection (off by default)
+
+State management:
+- `touristAudioActive`: Controls whether audio events are processed
+- `autoDetectEnabled`: Controls automatic reconnection behavior
+- Socket guards on `audio_chunk` and `audio_init` ignore events when audio is stopped
