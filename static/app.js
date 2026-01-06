@@ -5,6 +5,7 @@ let localStream = null;
 let audioCtx = null;
 let isBroadcasting = false;
 let animationId = null;
+let recognition = null;
 
 // Audio Visualizer Logic
 function setupAudioAnalysis(stream, meterId) {
@@ -210,28 +211,50 @@ window.startBroadcast = async function () {
             return;
         }
 
+        // HTTPS Check for Mobile
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+            const msg = "⚠️ STT usually requires HTTPS on mobile. Text might not appear via HTTP IP.";
+            log(msg);
+            alert(msg);
+        }
+
         // STT (Speech to Text) - Guide Side
         if (!('webkitSpeechRecognition' in window)) {
             alert("⚠️ Warning: This browser does not support AI Speech Recognition.\n\nGuide functionality requires Google Chrome (Android/PC).\niPhone (Safari) is NOT supported for STT.");
             log("STT Not Supported on this browser");
         } else {
-            const recognition = new webkitSpeechRecognition();
+            if (recognition) {
+                // Prevent multiple instances
+                try { recognition.stop(); } catch (e) { }
+            }
+            recognition = new webkitSpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'ko-KR'; // Guide speaks Korean
 
             // Deep Debugging for STT
-            recognition.onstart = () => log("STT Engine: Started");
+            recognition.onstart = () => {
+                log("STT Engine: Started");
+                updateGuideTranscriptUI("🎤 Listening...", false);
+            };
             recognition.onaudiostart = () => log("STT Engine: Audio Detected");
             recognition.onspeechstart = () => log("STT Engine: Speech Detected");
             recognition.onnomatch = () => log("STT Engine: No Match");
             recognition.onerror = (e) => {
                 log("STT Error: " + e.error);
-                if (e.error === 'not-allowed') alert("STT Permission Denied. Check settings.");
+                if (e.error === 'not-allowed') {
+                    alert("STT Permission Denied. Check settings.");
+                    els.guideStatus.textContent = "Error: STT Blocked";
+                    els.guideStatus.classList.add('status-error');
+                } else if (e.error === 'network') {
+                    els.guideStatus.textContent = "Error: STT Network Issue";
+                }
             };
             recognition.onend = () => {
                 log("STT Engine: Ended (Will Auto-restart)");
-                if (isBroadcasting) recognition.start();
+                if (isBroadcasting) {
+                    try { recognition.start(); } catch (e) { log("STT Restart Fail: " + e); }
+                }
             };
 
             recognition.onresult = (event) => {
@@ -262,8 +285,12 @@ window.startBroadcast = async function () {
                     updateGuideTranscriptUI(interim, false);
                 }
             };
-            recognition.start();
-            log("STT Init Command Sent");
+            try {
+                recognition.start();
+                log("STT Init Command Sent");
+            } catch (e) {
+                log("STT Start Error: " + e);
+            }
         }
 
         // Helper for Guide UI
