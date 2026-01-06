@@ -587,30 +587,30 @@ let initReceived = false;
 
 function initMediaSourceFallback() {
     if (mediaSource) return;
-    
+
     fallbackAudioElement = document.createElement('audio');
     fallbackAudioElement.autoplay = true;
     fallbackAudioElement.controls = true;
     fallbackAudioElement.style.marginTop = '20px';
     fallbackAudioElement.style.width = '100%';
-    
+
     const container = document.getElementById('tourist-controls');
     if (container) container.appendChild(fallbackAudioElement);
-    
+
     mediaSource = new MediaSource();
     fallbackAudioElement.src = URL.createObjectURL(mediaSource);
-    
+
     mediaSource.addEventListener('sourceopen', () => {
         log("MediaSource opened for streaming");
-        
+
         try {
             sourceBuffer = mediaSource.addSourceBuffer('audio/webm; codecs=opus');
             sourceBuffer.mode = 'sequence';
             sourceBufferReady = true;
-            
+
             sourceBuffer.addEventListener('updateend', flushPendingBuffers);
             sourceBuffer.addEventListener('error', (e) => log("SourceBuffer error: " + e));
-            
+
             flushPendingBuffers();
             log("SourceBuffer ready for audio/webm; codecs=opus");
         } catch (e) {
@@ -618,17 +618,17 @@ function initMediaSourceFallback() {
             sourceBufferReady = false;
         }
     });
-    
+
     mediaSource.addEventListener('error', (e) => log("MediaSource error: " + e));
-    
+
     fallbackAudioElement.play().catch(e => {
         log("Autoplay blocked: " + e);
         els.touristStatus.textContent = "Tap to enable audio playback";
     });
-    
+
     document.body.addEventListener('click', () => {
         if (fallbackAudioElement && fallbackAudioElement.paused) {
-            fallbackAudioElement.play().catch(() => {});
+            fallbackAudioElement.play().catch(() => { });
         }
     }, { once: true });
 }
@@ -639,7 +639,7 @@ function flushPendingBuffers() {
         return;
     }
     if (pendingBuffers.length === 0) return;
-    
+
     const buffer = pendingBuffers.shift();
     try {
         sourceBuffer.appendBuffer(buffer);
@@ -667,34 +667,34 @@ function appendToStream(data) {
         if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
         return Promise.resolve(null);
     };
-    
+
     toArrayBuffer(data).then(buffer => {
         if (!buffer) return;
-        
+
         pendingBuffers.push(buffer);
-        
+
         if (pendingBuffers.length > 50) {
             pendingBuffers = pendingBuffers.slice(-30);
             log("Buffer overflow, trimmed to 30");
         }
-        
+
         flushPendingBuffers();
     });
 }
 
 socket.on('audio_init', (data) => {
     log("Received audio init segment from server");
-    
+
     const toArrayBuffer = (input) => {
         if (input instanceof ArrayBuffer) return Promise.resolve(input);
         if (input instanceof Blob) return input.arrayBuffer();
         if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
         return Promise.resolve(null);
     };
-    
+
     toArrayBuffer(data).then(buffer => {
         if (!buffer) return;
-        
+
         pendingBuffers.unshift(buffer);
         initReceived = true;
         log("Init segment prepended, " + pendingBuffers.length + " buffers queued");
@@ -705,7 +705,7 @@ socket.on('audio_init', (data) => {
 socket.on('audio_chunk', (data) => {
     rxBytes += data.byteLength || data.size || 0;
     updateCounters();
-    
+
     if (!isFallbackActive) {
         isFallbackActive = true;
         els.touristStatus.textContent = "Buffering audio...";
@@ -713,7 +713,7 @@ socket.on('audio_chunk', (data) => {
         initMediaSourceFallback();
         socket.emit('request_audio_init');
     }
-    
+
     appendToStream(data);
 });
 
@@ -736,6 +736,7 @@ socket.on('guide_status', (data) => {
     }
 });
 // Transcript Receiver - Works for both Guide and Tourist
+// Transcript Receiver - Works for both Guide and Tourist
 socket.on('transcript', (data) => {
     const touristBox = document.getElementById('transcript-box');
     const guideBox = document.getElementById('guide-transcript-box');
@@ -749,33 +750,73 @@ socket.on('transcript', (data) => {
         displayText = data.translations[langInfo];
     }
 
+    // Function to update a box with "All History + Highlight Current" logic
+    const updateBox = (box, text, isFinal) => {
+        // We want to keep previous content (history) and append the new part.
+        // But for 'interim' results (isFinal=false), we usually replace the *last* temporary segment.
+        // Simplified approach: 
+        // 1. If we have a temporary segment (id='temp-seg'), remove it.
+        // 2. Append new segment.
+        // 3. If isFinal, give it 'history-text' class (after a brief highlight?). 
+        //    Actually user wants "Current explained part" highlighted.
+        //    So Final text is "History" (dimmed), and the NEWest text is highlighted?
+        //    OR: The user wants to see the full text, and the part currently being spoken is highlighted.
+        //    Since we build text iteratively:
+        //    - committed text -> history (dimmed)
+        //    - current speaking -> highlight
+
+        // Remove old temp segment if exists
+        const oldTemp = box.querySelector('#temp-seg');
+        if (oldTemp) oldTemp.remove();
+
+        const newSeg = document.createElement('span');
+        newSeg.id = isFinal ? '' : 'temp-seg'; // Final segments lose the temp ID so they stay
+        newSeg.innerHTML = text + " ";
+
+        if (isFinal) {
+            // committed text
+            newSeg.className = 'history-text';
+            // Optional: flash highlight then fade?
+            // For now, let's keep it simple: new committed text is just added.
+            // Wait, "Current explained part" usually means the *active* speech.
+            // If isFinal is true, it's done. 
+            // Maybe we highlight the *latest* final segment for a few seconds?
+            newSeg.className = 'highlight-pen';
+            setTimeout(() => {
+                newSeg.className = 'history-text';
+            }, 3000); // Highlight for 3 seconds then dim
+        } else {
+            // Interim (speaking now)
+            newSeg.className = 'highlight-pen';
+        }
+
+        box.appendChild(newSeg);
+        box.scrollTop = box.scrollHeight;
+    };
+
     if (role === 'tourist' && touristBox) {
-        if (data.isFinal) {
-            touristBox.innerHTML = `<div style="margin-bottom: 10px; color: #ccff00; text-shadow: 0 0 5px #ccff00; font-weight: bold;">${displayText}</div>`;
-            
-            if (ttsBtn && ttsBtn.textContent.includes("ON")) {
-                const utterance = new SpeechSynthesisUtterance(displayText);
-                if (langInfo === 'en') utterance.lang = 'en-US';
-                else if (langInfo === 'ja') utterance.lang = 'ja-JP';
-                else if (langInfo === 'zh-CN') utterance.lang = 'zh-CN';
-                else utterance.lang = 'ko-KR';
-                window.speechSynthesis.speak(utterance);
-            }
-        } else {
-            touristBox.innerHTML = `<div style="color: #fff; font-style: italic;">${displayText}</div>`;
+        updateBox(touristBox, displayText, data.isFinal);
+
+        if (data.isFinal && ttsBtn && ttsBtn.textContent.includes("ON")) {
+            const utterance = new SpeechSynthesisUtterance(displayText);
+            if (langInfo === 'en') utterance.lang = 'en-US';
+            else if (langInfo === 'ja') utterance.lang = 'ja-JP';
+            else if (langInfo === 'zh-CN') utterance.lang = 'zh-CN';
+            else utterance.lang = 'ko-KR';
+            window.speechSynthesis.speak(utterance);
         }
-        touristBox.scrollTop = touristBox.scrollHeight;
     }
-    
+
     if (role === 'guide' && guideBox) {
-        if (data.isFinal) {
-            guideBox.innerHTML = `<div style="color: #ccff00; font-weight: bold;">${data.original}</div>`;
-            if (data.translations && data.translations['en']) {
-                guideBox.innerHTML += `<div style="color: #aaa; font-size: 0.9em; margin-top: 5px;">EN: ${data.translations['en']}</div>`;
-            }
-        } else {
-            guideBox.innerHTML = `<div style="color: #fff; font-style: italic;">${data.original}</div>`;
+        // For guide, we usually show original text
+        // But if we want to show translations too, it gets tricky to "flow" them.
+        // Let's stick to original for Guide's flow, or append translation in brackets?
+        let guideText = data.original;
+        if (data.isFinal && data.translations && data.translations['en']) {
+            // guideText += ` <small>(${data.translations['en']})</small>`;
+            // Keep it clean for the "Teleprompter" look
         }
+        updateBox(guideBox, guideText, data.isFinal);
     }
 });
 
@@ -1087,11 +1128,11 @@ window.loadRecordings = async function () {
 window.summarizeSession = async function () {
     const status = document.getElementById('admin-status') || els.touristStatus;
     if (status) status.textContent = "Generating AI summary...";
-    
+
     try {
         const res = await fetch('/summarize', { method: 'POST' });
         const data = await res.json();
-        
+
         if (data.status === 'success') {
             const summaryText = data.summary;
             alert("Session Summary:\n\n" + summaryText);
@@ -1118,14 +1159,14 @@ window.clearSession = async function () {
     if (!confirm("Are you sure you want to clear all session transcripts? This cannot be undone.")) {
         return;
     }
-    
+
     const status = document.getElementById('admin-status');
     if (status) status.textContent = "Clearing session...";
-    
+
     try {
         const res = await fetch('/clear_session', { method: 'POST' });
         const data = await res.json();
-        
+
         if (data.status === 'success') {
             alert("Session cleared successfully!");
             if (status) status.textContent = "Session cleared";
