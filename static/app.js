@@ -574,77 +574,74 @@ socket.on('answer', async (data) => {
     }
 });
 
-// Fallback Binary Audio from Server
-let audioQueue = [];
-let isPlayingFallback = false;
+// Fallback Binary Audio from Server - Using Audio Buffering
+let audioChunks = [];
+let fallbackAudioElement = null;
+let fallbackMediaSource = null;
+let fallbackSourceBuffer = null;
+let isFallbackActive = false;
+let chunkBuffer = [];
+let lastChunkTime = 0;
 
-socket.on('audio_chunk', (data) => {
-    // data is typically an ArrayBuffer (if sent as Blob from client)
-    rxBytes += data.byteLength || data.size || 0;
-    updateCounters();
+function initFallbackAudio() {
+    if (fallbackAudioElement) return;
+    
+    fallbackAudioElement = document.createElement('audio');
+    fallbackAudioElement.autoplay = true;
+    fallbackAudioElement.controls = true;
+    fallbackAudioElement.style.marginTop = '20px';
+    fallbackAudioElement.style.width = '100%';
+    document.getElementById('tourist-controls').appendChild(fallbackAudioElement);
+    
+    log("Fallback audio element created");
+}
 
-    // Convert to Blob
-    const blob = new Blob([data], { type: 'audio/webm;codecs=opus' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-
-    // Cleanup URL after play
-    audio.onended = () => {
-        URL.revokeObjectURL(url);
-        playNextFallback();
-    };
-
-    audio.onerror = (e) => {
-        log("Playback Error: " + e);
-        playNextFallback();
-    };
-
-    audioQueue.push(audio);
-
-    // Ensure the visualizer also sees this audio? 
-    // It's hard to hook Audio element into the same AudioContext/Analyser easily without CORS/cross-origin issues 
-    // if the Blob URL is treated strictly. But usually same-origin is fine.
-    // For now, let's just Focus on Hearing it.
-
-    if (!isPlayingFallback) {
-        playNextFallback();
+function playBufferedAudio() {
+    if (chunkBuffer.length === 0) return;
+    
+    const combinedBlob = new Blob(chunkBuffer, { type: 'audio/webm;codecs=opus' });
+    chunkBuffer = [];
+    
+    const url = URL.createObjectURL(combinedBlob);
+    
+    if (fallbackAudioElement) {
+        URL.revokeObjectURL(fallbackAudioElement.src);
     }
-});
-
-function playNextFallback() {
-    if (audioQueue.length === 0) {
-        isPlayingFallback = false;
-        return;
-    }
-
-    // Catch-up logic: Drop frames if too far behind, or speed up
-    // If we have more than 5 chunks (~0.25s) buffered, speed up
-    // If we have more than 20 chunks (~1s), skip some
-    if (audioQueue.length > 20) {
-        log("Catch-up: Dropping " + (audioQueue.length - 5) + " chunks");
-        // Clear all but last 5
-        audioQueue = audioQueue.slice(audioQueue.length - 5);
-    }
-
-    isPlayingFallback = true;
-    const audio = audioQueue.shift();
-
-    // Smart play rate
-    if (audioQueue.length > 5) {
-        audio.playbackRate = 1.3; // 30% faster
-    } else if (audioQueue.length > 2) {
-        audio.playbackRate = 1.1; // 10% faster
-    } else {
-        audio.playbackRate = 1.0;
-    }
-
-    // Attempt play
-    audio.play().catch(e => {
-        log("FB Auto-play blocked: " + e);
-        // If blocked, maybe just skip or retry? 
-        playNextFallback();
+    
+    initFallbackAudio();
+    fallbackAudioElement.src = url;
+    fallbackAudioElement.play().then(() => {
+        els.touristStatus.textContent = "Playing Audio (WebSocket)";
+        log("Playing buffered audio");
+    }).catch(e => {
+        log("Fallback play error: " + e);
+        els.touristStatus.textContent = "Tap to enable audio";
     });
 }
+
+socket.on('audio_chunk', (data) => {
+    rxBytes += data.byteLength || data.size || 0;
+    updateCounters();
+    
+    if (!isFallbackActive) {
+        isFallbackActive = true;
+        els.touristStatus.textContent = "Receiving audio (WebSocket)...";
+        log("Fallback audio stream started");
+    }
+    
+    chunkBuffer.push(data);
+    
+    const now = Date.now();
+    if (now - lastChunkTime > 500 && chunkBuffer.length > 5) {
+        lastChunkTime = now;
+        playBufferedAudio();
+    }
+    
+    if (chunkBuffer.length > 100) {
+        log("Buffer overflow, playing...");
+        playBufferedAudio();
+    }
+});
 
 
 // --- Smart Signaling: Handle Late Join / Guide Restart ---
