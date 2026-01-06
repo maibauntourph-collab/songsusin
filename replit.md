@@ -48,4 +48,19 @@ python server.py
 - `join_room` - Join as guide or tourist
 - `offer/answer` - WebRTC signaling
 - `transcript_msg` - Speech-to-text messages
-- `binary_audio` - Fallback audio streaming
+- `audio_chunk` - Binary audio streaming (WebM/Opus)
+- `audio_init` - Audio initialization segment for late-joining tourists
+- `request_audio_init` - Request cached init segment from server
+- `reset_audio_session` - Reset audio state for new broadcast
+
+## Audio Streaming Architecture
+The system uses MediaSource Extensions (MSE) API for continuous audio streaming:
+- Server caches the first audio chunk (WebM init segment) for late-joining tourists
+- SourceBuffer in 'sequence' mode ensures gap-free playback
+- Init segment is prepended to buffer queue before any media chunks
+- Automatic buffer cleanup on QuotaExceededError (keeps last 5 seconds)
+
+## Recent Changes (Jan 2026)
+- Fixed audio playback: Implemented MediaSource Extension streaming
+- Added init segment caching and ordering for late-joining tourists
+- Added Korean documentation (AUDIO_DEBUG_KR.md)
