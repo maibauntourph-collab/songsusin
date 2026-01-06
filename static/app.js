@@ -170,6 +170,8 @@ window.startBroadcast = async function () {
         if (isBroadcasting) return;
         isBroadcasting = true;
 
+        socket.emit('reset_audio_session');
+
         // UI Updates
         els.guideStatus.textContent = "Initializing...";
         els.guideStatus.classList.remove('status-error');
@@ -574,50 +576,131 @@ socket.on('answer', async (data) => {
     }
 });
 
-// Fallback Binary Audio from Server - Using Audio Buffering
-let audioChunks = [];
+// Fallback Binary Audio - MediaSource Extension streaming
 let fallbackAudioElement = null;
-let fallbackMediaSource = null;
-let fallbackSourceBuffer = null;
+let mediaSource = null;
+let sourceBuffer = null;
 let isFallbackActive = false;
-let chunkBuffer = [];
-let lastChunkTime = 0;
+let pendingBuffers = [];
+let sourceBufferReady = false;
+let initReceived = false;
 
-function initFallbackAudio() {
-    if (fallbackAudioElement) return;
+function initMediaSourceFallback() {
+    if (mediaSource) return;
     
     fallbackAudioElement = document.createElement('audio');
     fallbackAudioElement.autoplay = true;
     fallbackAudioElement.controls = true;
     fallbackAudioElement.style.marginTop = '20px';
     fallbackAudioElement.style.width = '100%';
-    document.getElementById('tourist-controls').appendChild(fallbackAudioElement);
     
-    log("Fallback audio element created");
+    const container = document.getElementById('tourist-controls');
+    if (container) container.appendChild(fallbackAudioElement);
+    
+    mediaSource = new MediaSource();
+    fallbackAudioElement.src = URL.createObjectURL(mediaSource);
+    
+    mediaSource.addEventListener('sourceopen', () => {
+        log("MediaSource opened for streaming");
+        
+        try {
+            sourceBuffer = mediaSource.addSourceBuffer('audio/webm; codecs=opus');
+            sourceBuffer.mode = 'sequence';
+            sourceBufferReady = true;
+            
+            sourceBuffer.addEventListener('updateend', flushPendingBuffers);
+            sourceBuffer.addEventListener('error', (e) => log("SourceBuffer error: " + e));
+            
+            flushPendingBuffers();
+            log("SourceBuffer ready for audio/webm; codecs=opus");
+        } catch (e) {
+            log("SourceBuffer creation failed: " + e);
+            sourceBufferReady = false;
+        }
+    });
+    
+    mediaSource.addEventListener('error', (e) => log("MediaSource error: " + e));
+    
+    fallbackAudioElement.play().catch(e => {
+        log("Autoplay blocked: " + e);
+        els.touristStatus.textContent = "Tap to enable audio playback";
+    });
+    
+    document.body.addEventListener('click', () => {
+        if (fallbackAudioElement && fallbackAudioElement.paused) {
+            fallbackAudioElement.play().catch(() => {});
+        }
+    }, { once: true });
 }
 
-function playBufferedAudio() {
-    if (chunkBuffer.length === 0) return;
-    
-    const combinedBlob = new Blob(chunkBuffer, { type: 'audio/webm;codecs=opus' });
-    chunkBuffer = [];
-    
-    const url = URL.createObjectURL(combinedBlob);
-    
-    if (fallbackAudioElement) {
-        URL.revokeObjectURL(fallbackAudioElement.src);
+function flushPendingBuffers() {
+    if (!sourceBufferReady || !sourceBuffer || sourceBuffer.updating) return;
+    if (!initReceived) {
+        return;
     }
+    if (pendingBuffers.length === 0) return;
     
-    initFallbackAudio();
-    fallbackAudioElement.src = url;
-    fallbackAudioElement.play().then(() => {
-        els.touristStatus.textContent = "Playing Audio (WebSocket)";
-        log("Playing buffered audio");
-    }).catch(e => {
-        log("Fallback play error: " + e);
-        els.touristStatus.textContent = "Tap to enable audio";
+    const buffer = pendingBuffers.shift();
+    try {
+        sourceBuffer.appendBuffer(buffer);
+        els.touristStatus.textContent = "Playing Audio (Stream)";
+    } catch (e) {
+        if (e.name === 'QuotaExceededError') {
+            try {
+                const buffered = sourceBuffer.buffered;
+                if (buffered.length > 0 && buffered.start(0) < buffered.end(0) - 10) {
+                    sourceBuffer.remove(buffered.start(0), buffered.end(0) - 5);
+                }
+            } catch (removeErr) {
+                log("Buffer cleanup failed: " + removeErr);
+            }
+        } else {
+            log("AppendBuffer error: " + e);
+        }
+    }
+}
+
+function appendToStream(data) {
+    const toArrayBuffer = (input) => {
+        if (input instanceof ArrayBuffer) return Promise.resolve(input);
+        if (input instanceof Blob) return input.arrayBuffer();
+        if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
+        return Promise.resolve(null);
+    };
+    
+    toArrayBuffer(data).then(buffer => {
+        if (!buffer) return;
+        
+        pendingBuffers.push(buffer);
+        
+        if (pendingBuffers.length > 50) {
+            pendingBuffers = pendingBuffers.slice(-30);
+            log("Buffer overflow, trimmed to 30");
+        }
+        
+        flushPendingBuffers();
     });
 }
+
+socket.on('audio_init', (data) => {
+    log("Received audio init segment from server");
+    
+    const toArrayBuffer = (input) => {
+        if (input instanceof ArrayBuffer) return Promise.resolve(input);
+        if (input instanceof Blob) return input.arrayBuffer();
+        if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
+        return Promise.resolve(null);
+    };
+    
+    toArrayBuffer(data).then(buffer => {
+        if (!buffer) return;
+        
+        pendingBuffers.unshift(buffer);
+        initReceived = true;
+        log("Init segment prepended, " + pendingBuffers.length + " buffers queued");
+        flushPendingBuffers();
+    });
+});
 
 socket.on('audio_chunk', (data) => {
     rxBytes += data.byteLength || data.size || 0;
@@ -625,22 +708,13 @@ socket.on('audio_chunk', (data) => {
     
     if (!isFallbackActive) {
         isFallbackActive = true;
-        els.touristStatus.textContent = "Receiving audio (WebSocket)...";
-        log("Fallback audio stream started");
+        els.touristStatus.textContent = "Buffering audio...";
+        log("Starting MediaSource fallback stream");
+        initMediaSourceFallback();
+        socket.emit('request_audio_init');
     }
     
-    chunkBuffer.push(data);
-    
-    const now = Date.now();
-    if (now - lastChunkTime > 500 && chunkBuffer.length > 5) {
-        lastChunkTime = now;
-        playBufferedAudio();
-    }
-    
-    if (chunkBuffer.length > 100) {
-        log("Buffer overflow, playing...");
-        playBufferedAudio();
-    }
+    appendToStream(data);
 });
 
 

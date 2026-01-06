@@ -134,19 +134,41 @@ async def offer(sid, data):
         
         await sio_server.emit('answer', {'sdp': pc.localDescription.sdp, 'type': pc.localDescription.type}, room=sid)
 
-# Stat counter
+# Stat counter and audio init segment cache
 audio_chunks_count = 0
+audio_init_segment = None
+audio_session_active = False
 
 @sio_server.event
 async def binary_audio(sid, data):
-    global audio_chunks_count
-    # Fallback: Receive audio from Guide, broadcast to Tourists
-    # data is expected to be bytes
+    global audio_chunks_count, audio_init_segment, audio_session_active
+    
     audio_chunks_count += 1
+    
+    if audio_chunks_count == 1:
+        audio_init_segment = data
+        audio_session_active = True
+        logger.info("Cached audio initialization segment")
+    
     if audio_chunks_count % 50 == 0:
         logger.info(f"Relayed {audio_chunks_count} audio chunks via WS")
         
     await sio_server.emit('audio_chunk', data, room='tourists')
+
+@sio_server.event
+async def reset_audio_session(sid):
+    global audio_chunks_count, audio_init_segment, audio_session_active
+    audio_chunks_count = 0
+    audio_init_segment = None
+    audio_session_active = False
+    logger.info("Audio session reset")
+
+@sio_server.event
+async def request_audio_init(sid):
+    global audio_init_segment
+    if audio_init_segment:
+        logger.info(f"Sending init segment to {sid}")
+        await sio_server.emit('audio_init', audio_init_segment, room=sid)
 
 @sio_server.event
 async def request_reconnect(sid):
