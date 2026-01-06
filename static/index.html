@@ -125,8 +125,11 @@
             <div onclick="location.reload()" style="cursor: pointer; text-align: center;">
                 <span style="font-size: 1.5rem;">🔄</span>
             </div>
-            <!-- Run (Broadcast) - Visible only in Guide Mode usually, but here globally or conditional -->
-            <!-- We'll toggle visibility or just have it as a Status indicator if playing -->
+
+            <!-- Run (Start Broadcast) -->
+            <div onclick="startBroadcast()" style="cursor: pointer; text-align: center;">
+                <span style="font-size: 1.5rem;">▶️</span>
+            </div>
 
             <!-- Stop Server (Kill) -->
             <div onclick="confirmShutdown()" style="cursor: pointer; text-align: center;">
