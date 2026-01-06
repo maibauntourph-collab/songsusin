@@ -137,6 +137,58 @@ function resumeAudioContext() {
 }
 
 
+// Bind events safely after DOM load
+document.addEventListener('DOMContentLoaded', () => {
+    const playBtn = document.getElementById('play-btn');
+    if (playBtn) {
+        // Handle both click and touchstart for better mobile response
+        const handleInteraction = (e) => {
+            e.preventDefault(); // Prevent double-firing on some devices
+            log("Button Interact: " + e.type);
+            playBtn.textContent = "Processing...";
+            playBtn.style.background = "#ffc107"; // Yellow indicating working
+            resumeAudioContext();
+        };
+
+        playBtn.addEventListener('click', handleInteraction);
+        playBtn.addEventListener('touchstart', handleInteraction);
+    }
+});
+
+function enableBackgroundMode() {
+    // 1. Wake Lock (Screen)
+    if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen')
+            .then(wl => {
+                wakeLock = wl;
+                log("Screen WakeLock Acquired (Background Mode)");
+            })
+            .catch(err => log("WakeLock Fail: " + err));
+    }
+
+    // 2. Media Session API (Lock Screen Controls)
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: 'Mobile Audio Guide',
+            artist: 'Live Stream',
+            album: 'Tour System',
+            artwork: [
+                { src: 'https://via.placeholder.com/96', sizes: '96x96', type: 'image/png' },
+                { src: 'https://via.placeholder.com/128', sizes: '128x128', type: 'image/png' },
+            ]
+        });
+
+        navigator.mediaSession.setActionHandler('play', () => {
+            if (dummyAudio) dummyAudio.play();
+            if (audioCtx) audioCtx.resume();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+            // Do nothing to prevent stopping
+            log("Pause pressed on lock screen - Ignoring to keep stream alive");
+        });
+    }
+}
+
 // Helper to wait for ICE gathering to complete
 function waitForICEGathering(pc) {
     return new Promise((resolve) => {
