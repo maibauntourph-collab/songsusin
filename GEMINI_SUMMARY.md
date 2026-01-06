@@ -32,6 +32,8 @@
 - **Session History**: STT 대화 내용 DB 저장 및 조회/다운로드 기능 구현.
 - **Docs**: `user_guide.md` 최신화 (한글 매뉴얼 업데이트).
 - **Code Sync**: GitHub 원격 저장소에서 최신 코드 Pull 완료 (서버 로직 및 UI 업데이트 반영).
+- **Karaoke View**: 전체 대화 내용을 유지하면서 현재 설명 중인 문장을 형광펜 효과(`highlight-pen`)로 강조하는 "노래방 가사/프롬프터" 스타일 UI 구현.
+
 
 
 ---
