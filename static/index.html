@@ -245,8 +245,29 @@
 
     <div class="container hidden" id="tourist-controls">
         <h1>Tourist Mode</h1>
-        <div class="status" id="tourist-status">Waiting for stream...</div>
+        <div class="status" id="tourist-status">Ready - Press Start to listen</div>
         <div class="data-counter" id="tourist-counter">RX: 0 KB</div>
+
+        <!-- Audio Control Buttons -->
+        <div style="display: flex; gap: 10px; margin: 15px 0;">
+            <button id="tourist-start-btn" class="btn-guide" onclick="startTouristAudio()" style="flex: 1;">
+                Start Audio
+            </button>
+            <button id="tourist-stop-btn" class="btn-stop" onclick="stopTouristAudio()" style="flex: 1; display: none;">
+                Stop Audio
+            </button>
+        </div>
+
+        <!-- Auto-detect Option -->
+        <div style="background: #2a2a2a; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: white;">
+                <input type="checkbox" id="auto-detect-toggle" style="width: 20px; height: 20px;">
+                <span>Auto-detect (자동 감지)</span>
+            </label>
+            <p style="font-size: 0.75rem; color: #888; margin: 5px 0 0 30px;">
+                Enable to automatically reconnect when connection is lost
+            </p>
+        </div>
 
         <!-- Karaoke / STT Box -->
         <div id="transcript-box" style="

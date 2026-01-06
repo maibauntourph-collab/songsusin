@@ -7,6 +7,10 @@ let isBroadcasting = false;
 let animationId = null;
 let recognition = null;
 
+// Manual audio control state (prevent auto-reconnect loops)
+let autoDetectEnabled = false;
+let touristAudioActive = false;
+
 // Audio Visualizer Logic
 function setupAudioAnalysis(stream, meterId) {
     try {
@@ -433,10 +437,13 @@ function setupFallbackRecorder(stream) {
 }
 
 socket.on('reconnect_ack', () => {
-    log("Server acknowledged reconnect request. Restarting WebRTC...");
-    // Force a role re-selection or re-init
-    if (role === 'tourist') {
-        startTouristReceiver(); // Try to get offer again
+    log("Server acknowledged reconnect request.");
+    // Only auto-reconnect if enabled AND tourist audio is active
+    if (role === 'tourist' && autoDetectEnabled && touristAudioActive) {
+        log("Auto-detect ON - restarting WebRTC...");
+        startTouristReceiver();
+    } else {
+        log("Auto-detect OFF - waiting for manual start");
     }
 });
 
@@ -457,9 +464,16 @@ function createPeerConnection() {
             els.touristStatus.textContent = `Status: ${pc.iceConnectionState}`;
         }
         if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-            log("WebRTC Unstable (" + pc.iceConnectionState + "). Attempting Reconnect...");
-            els.touristStatus.textContent = "Connection Lost. Reconnecting...";
-            if (role === 'tourist') socket.emit('request_reconnect');
+            log("WebRTC Unstable (" + pc.iceConnectionState + ")");
+            // Only auto-reconnect if enabled
+            if (autoDetectEnabled && touristAudioActive) {
+                log("Auto-detect ON - requesting reconnect...");
+                els.touristStatus.textContent = "Connection Lost. Reconnecting...";
+                socket.emit('request_reconnect');
+            } else {
+                els.touristStatus.textContent = "WebRTC Failed - Using WebSocket audio";
+                log("Auto-detect OFF - using WebSocket fallback only");
+            }
         } else if (pc.iceConnectionState === 'connected') {
             log("ICE Connected!");
             if (role === 'tourist' && els.touristStatus.textContent.includes("Waiting")) {
@@ -561,11 +575,86 @@ window.selectRole = function (r) {
     } else {
         els.touristCtrl.classList.remove('hidden');
         initAudioContext();
-        // Tourist immediate logic
-        startTouristReceiver();
+        // Do NOT auto-start - wait for manual button press
+        els.touristStatus.textContent = "Ready - Press Start to listen";
     }
     socket.emit('join_room', { role: role });
 }
+
+// Reset all audio fallback state (cleanup only, does not reset counters)
+function resetFallbackState() {
+    if (fallbackAudioElement) {
+        fallbackAudioElement.pause();
+        fallbackAudioElement.remove();
+        fallbackAudioElement = null;
+    }
+    if (mediaSource && mediaSource.readyState === 'open') {
+        try { mediaSource.endOfStream(); } catch(e) {}
+    }
+    mediaSource = null;
+    sourceBuffer = null;
+    isFallbackActive = false;
+    pendingBuffers = [];
+    sourceBufferReady = false;
+    initReceived = false;
+}
+
+// Manual Tourist Audio Control
+window.startTouristAudio = function() {
+    log("Manual start tourist audio");
+    
+    // Reset counters for fresh start
+    rxBytes = 0;
+    updateCounters();
+    
+    // Clean up any previous state
+    resetFallbackState();
+    
+    touristAudioActive = true;
+    document.getElementById('tourist-start-btn').style.display = 'none';
+    document.getElementById('tourist-stop-btn').style.display = 'block';
+    els.touristStatus.textContent = "Connecting...";
+    
+    try {
+        startTouristReceiver();
+    } catch (e) {
+        log("Start failed: " + e);
+        touristAudioActive = false;
+        document.getElementById('tourist-start-btn').style.display = 'block';
+        document.getElementById('tourist-stop-btn').style.display = 'none';
+        els.touristStatus.textContent = "Connection failed - try again";
+    }
+}
+
+window.stopTouristAudio = function() {
+    log("Manual stop tourist audio");
+    touristAudioActive = false;
+    document.getElementById('tourist-start-btn').style.display = 'block';
+    document.getElementById('tourist-stop-btn').style.display = 'none';
+    
+    // Close WebRTC connection
+    if (pc) {
+        pc.close();
+        pc = null;
+    }
+    
+    // Reset fallback state
+    resetFallbackState();
+    updateCounters();
+    
+    els.touristStatus.textContent = "Stopped - Press Start to listen";
+}
+
+// Auto-detect toggle handler
+document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('auto-detect-toggle');
+    if (toggle) {
+        toggle.addEventListener('change', (e) => {
+            autoDetectEnabled = e.target.checked;
+            log("Auto-detect: " + (autoDetectEnabled ? "ON" : "OFF"));
+        });
+    }
+});
 
 socket.on('answer', async (data) => {
     log("Received Answer");
@@ -683,6 +772,9 @@ function appendToStream(data) {
 }
 
 socket.on('audio_init', (data) => {
+    // Ignore audio if tourist has stopped listening
+    if (!touristAudioActive) return;
+    
     log("Received audio init segment from server");
     
     const toArrayBuffer = (input) => {
@@ -703,6 +795,9 @@ socket.on('audio_init', (data) => {
 });
 
 socket.on('audio_chunk', (data) => {
+    // Ignore audio if tourist has stopped listening
+    if (!touristAudioActive) return;
+    
     rxBytes += data.byteLength || data.size || 0;
     updateCounters();
     
@@ -720,10 +815,16 @@ socket.on('audio_chunk', (data) => {
 
 // --- Smart Signaling: Handle Late Join / Guide Restart ---
 socket.on('guide_ready', () => {
-    log("Guide is ready! Negotiating connection...");
-    els.touristStatus.textContent = "Guide Online. Connecting...";
+    log("Guide is ready!");
     if (role === 'tourist') {
-        startTouristReceiver(); // Re-negotiate (or start fresh) to get the track
+        // Only auto-connect if auto-detect is enabled AND audio is active
+        if (autoDetectEnabled && touristAudioActive) {
+            log("Auto-detect ON - connecting to guide...");
+            els.touristStatus.textContent = "Guide Online. Connecting...";
+            startTouristReceiver();
+        } else {
+            els.touristStatus.textContent = "Guide Online - Press Start to listen";
+        }
     }
 });
 

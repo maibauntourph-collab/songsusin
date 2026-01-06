@@ -64,3 +64,6 @@ The system uses MediaSource Extensions (MSE) API for continuous audio streaming:
 - Fixed audio playback: Implemented MediaSource Extension streaming
 - Added init segment caching and ordering for late-joining tourists
 - Added Korean documentation (AUDIO_DEBUG_KR.md)
+- Fixed audio reconnect loop: Added manual Start/Stop buttons for tourists
+- Added Auto-detect toggle option (off by default)
+- Created AUDIO_LOOP_FIX.md with bilingual documentation
