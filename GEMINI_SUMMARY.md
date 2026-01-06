@@ -31,6 +31,8 @@
 - **Recording**: 서버 측 오디오 스트림 자동 녹음(`wav`) 및 다운로드 기능 구현.
 - **Session History**: STT 대화 내용 DB 저장 및 조회/다운로드 기능 구현.
 - **Docs**: `user_guide.md` 최신화 (한글 매뉴얼 업데이트).
+- **Code Sync**: GitHub 원격 저장소에서 최신 코드 Pull 완료 (서버 로직 및 UI 업데이트 반영).
+
 
 ---
 *Last Updated: 2026-01-06 (via Gemini)*
