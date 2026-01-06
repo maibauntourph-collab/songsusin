@@ -661,45 +661,48 @@ socket.on('guide_status', (data) => {
         els.touristStatus.textContent = "Guide Found! Connecting...";
     }
 });
-// Transcript Receiver
+// Transcript Receiver - Works for both Guide and Tourist
 socket.on('transcript', (data) => {
-    // data: { original: "...", translations: { ... }, isFinal: bool }
-    const box = document.getElementById('transcript-box');
-    const langInfo = document.getElementById('lang-select').value;
+    const touristBox = document.getElementById('transcript-box');
+    const guideBox = document.getElementById('guide-transcript-box');
+    const langSelect = document.getElementById('lang-select');
+    const langInfo = langSelect ? langSelect.value : 'original';
     const ttsBtn = document.getElementById('tts-btn');
 
     let displayText = data.original;
 
-    // Use translation ONLY if final (server doesn't translate interim)
     if (data.isFinal && langInfo !== 'original' && data.translations && data.translations[langInfo]) {
         displayText = data.translations[langInfo];
     }
 
-    // Ensure box exists
-    if (!box) return;
-
-    if (data.isFinal) {
-        // Final: Add as a new distinct block/line
-        // Use neon green/yellow
-        box.innerHTML = `<div style="margin-bottom: 10px; color: #ccff00; text-shadow: 0 0 5px #ccff00; font-weight: bold;">${displayText}</div>`;
-
-        // TTS (Auto-Read) only on Final
-        if (ttsBtn.textContent.includes("ON")) {
-            const utterance = new SpeechSynthesisUtterance(displayText);
-            if (langInfo === 'en') utterance.lang = 'en-US';
-            else if (langInfo === 'ja') utterance.lang = 'ja-JP';
-            else if (langInfo === 'zh-CN') utterance.lang = 'zh-CN';
-            else utterance.lang = 'ko-KR';
-            window.speechSynthesis.speak(utterance);
+    if (role === 'tourist' && touristBox) {
+        if (data.isFinal) {
+            touristBox.innerHTML = `<div style="margin-bottom: 10px; color: #ccff00; text-shadow: 0 0 5px #ccff00; font-weight: bold;">${displayText}</div>`;
+            
+            if (ttsBtn && ttsBtn.textContent.includes("ON")) {
+                const utterance = new SpeechSynthesisUtterance(displayText);
+                if (langInfo === 'en') utterance.lang = 'en-US';
+                else if (langInfo === 'ja') utterance.lang = 'ja-JP';
+                else if (langInfo === 'zh-CN') utterance.lang = 'zh-CN';
+                else utterance.lang = 'ko-KR';
+                window.speechSynthesis.speak(utterance);
+            }
+        } else {
+            touristBox.innerHTML = `<div style="color: #fff; font-style: italic;">${displayText}</div>`;
         }
-    } else {
-        // Interim: Show as "pending" text
-        // Use different color (e.g. White or Light Blue)
-        box.innerHTML = `<div style="color: #fff; font-style: italic;">${displayText}</div>`;
+        touristBox.scrollTop = touristBox.scrollHeight;
     }
-
-    // Auto-scroll to bottom
-    box.scrollTop = box.scrollHeight;
+    
+    if (role === 'guide' && guideBox) {
+        if (data.isFinal) {
+            guideBox.innerHTML = `<div style="color: #ccff00; font-weight: bold;">${data.original}</div>`;
+            if (data.translations && data.translations['en']) {
+                guideBox.innerHTML += `<div style="color: #aaa; font-size: 0.9em; margin-top: 5px;">EN: ${data.translations['en']}</div>`;
+            }
+        } else {
+            guideBox.innerHTML = `<div style="color: #fff; font-style: italic;">${data.original}</div>`;
+        }
+    }
 });
 
 // TTS Toggle
@@ -1007,8 +1010,64 @@ window.loadRecordings = async function () {
 }
 
 
+window.summarizeSession = async function () {
+    const status = document.getElementById('admin-status') || els.touristStatus;
+    if (status) status.textContent = "Generating AI summary...";
+    
+    try {
+        const res = await fetch('/summarize', { method: 'POST' });
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            const summaryText = data.summary;
+            alert("Session Summary:\n\n" + summaryText);
+            if (status) status.textContent = "Summary generated!";
+        } else {
+            alert("Error: " + (data.message || "Failed to generate summary"));
+            if (status) status.textContent = "Summary failed";
+        }
+    } catch (e) {
+        alert("Summary error: " + e);
+        if (status) status.textContent = "Error";
+    }
+}
+
+window.downloadTranscript = async function () {
+    try {
+        window.location.href = '/download_transcript';
+    } catch (e) {
+        alert("Download error: " + e);
+    }
+}
+
+window.clearSession = async function () {
+    if (!confirm("Are you sure you want to clear all session transcripts? This cannot be undone.")) {
+        return;
+    }
+    
+    const status = document.getElementById('admin-status');
+    if (status) status.textContent = "Clearing session...";
+    
+    try {
+        const res = await fetch('/clear_session', { method: 'POST' });
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            alert("Session cleared successfully!");
+            if (status) status.textContent = "Session cleared";
+            loadHistory();
+        } else {
+            alert("Error: " + (data.message || "Failed to clear session"));
+            if (status) status.textContent = "Clear failed";
+        }
+    } catch (e) {
+        alert("Clear error: " + e);
+        if (status) status.textContent = "Error";
+    }
+}
+
 window.confirmShutdown = async function () {
-    if (confirm("⚠️ SYSTEM SHUTDOWN ⚠️\n\nAre you sure you want to STOP the server program?\nThis will disconnect all users.")) {
+    if (confirm("Are you sure you want to STOP the server?")) {
         try {
             await fetch('/shutdown', { method: 'POST' });
             alert("Server is shutting down...");

@@ -229,7 +229,11 @@
                 style="max-height: 200px; overflow-y: auto; background: #222; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
                 <div style='color: #888; font-style: italic;'>Click refresh...</div>
             </div>
-            <button onclick="downloadHistory()" style="background: #007bff; width: 100%;">Download Text Log</button>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <button onclick="downloadHistory()" style="background: #007bff; flex: 1;">Download Log</button>
+                <button onclick="summarizeSession()" style="background: #e83e8c; flex: 1;">AI Summary</button>
+            </div>
+            <button onclick="clearSession()" style="background: #dc3545; width: 100%; margin-bottom: 10px;">Clear Session</button>
 
             <h5 style="color: #aaa; margin: 15px 0 5px;">Audio Recordings</h5>
             <div id="recording-list"
@@ -282,6 +286,11 @@
                 color: white; 
                 border: 1px solid #555;
             ">Sound: OFF</button>
+        </div>
+
+        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+            <button onclick="downloadTranscript()" style="background: #007bff; padding: 10px 20px; border-radius: 5px; color: white; border: none;">Download Log</button>
+            <button onclick="summarizeSession()" style="background: #e83e8c; padding: 10px 20px; border-radius: 5px; color: white; border: none;">AI Summary</button>
         </div>
 
         <!-- Tourist Meter -->

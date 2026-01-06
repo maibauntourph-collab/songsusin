@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import uuid
+from datetime import datetime
 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +12,7 @@ from fastapi.responses import HTMLResponse
 import socketio
 from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 from aiortc.contrib.media import MediaRelay, MediaRecorder
+from openai import OpenAI
 
 # Log Setup
 logging.basicConfig(level=logging.INFO)
@@ -177,45 +179,44 @@ def translate_sync(text, target):
 # Transcript/Translation Handler
 @sio_server.event
 async def transcript_msg(sid, data):
-    # data: {'text': "Hello", 'source_lang': 'auto', 'isFinal': boolean}
     text = data.get('text', '')
     is_final = data.get('isFinal', True) 
     
     if not text:
         return
 
-    # Broadcast structure
     response = {
         'original': text,
         'translations': {},
         'isFinal': is_final
     }
 
-    # Optimization: Only translate if isFinal is True
     if is_final:
-        # Translate to key languages concurrently
         targets = ['en', 'ko', 'ja', 'zh-CN']
         loop = asyncio.get_event_loop()
         
-        # Create tasks for each translation
         tasks = []
         for lang in targets:
             tgt = 'zh-CN' if lang == 'zh-CN' else lang
             tasks.append(loop.run_in_executor(executor, translate_sync, text, tgt))
         
-        # Wait for all
-        results = await asyncio.gather(*tasks)
-        
-        # Map results back to languages
-        for i, lang in enumerate(targets):
-            response['translations'][lang] = results[i]
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for i, lang in enumerate(targets):
+                if isinstance(results[i], Exception):
+                    response['translations'][lang] = text
+                    logger.error(f"Translation error for {lang}: {results[i]}")
+                else:
+                    response['translations'][lang] = results[i] or text
+        except Exception as e:
+            logger.error(f"Translation gather error: {e}")
+            for lang in targets:
+                response['translations'][lang] = text
 
-        # Save to file (also in background/async ideally, but file I/O is fast enough usually)
         try:
             with open("guide_transcript.txt", "a", encoding="utf-8") as f:
                 f.write(f"{text}\n")
             
-            # Save to DB
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
             c.execute("INSERT INTO transcripts (text, translations) VALUES (?, ?)", (text, json.dumps(response['translations'])))
@@ -226,6 +227,7 @@ async def transcript_msg(sid, data):
             logger.error(f"File/DB save error: {e}")
 
     await sio_server.emit('transcript', response, room='tourists')
+    await sio_server.emit('transcript', response, room='guides')
 
 
 # (Imports merged with top section)
@@ -350,6 +352,115 @@ async def get_history():
         })
     
     return {"history": history}
+
+@app.post("/summarize")
+async def summarize_session():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT text FROM transcripts ORDER BY id ASC")
+        rows = c.fetchall()
+        conn.close()
+        
+        if not rows:
+            return {"status": "error", "message": "No transcripts to summarize"}
+        
+        all_text = "\n".join([r[0] for r in rows])
+        
+        if len(all_text) < 50:
+            return {"status": "error", "message": "Not enough content to summarize"}
+        
+        client = OpenAI(
+            api_key=os.environ.get("AI_INTEGRATIONS_OPENAI_API_KEY"),
+            base_url=os.environ.get("AI_INTEGRATIONS_OPENAI_BASE_URL")
+        )
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that summarizes tour guide sessions. Provide a clear, concise summary of the key points discussed. Output in Korean if the content is primarily Korean, otherwise match the main language."},
+                {"role": "user", "content": f"Please summarize this tour guide session transcript:\n\n{all_text[:8000]}"}
+            ],
+            max_tokens=1000
+        )
+        
+        summary = response.choices[0].message.content
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        summary_file = f"session_summary_{timestamp}.txt"
+        with open(summary_file, "w", encoding="utf-8") as f:
+            f.write(f"Session Summary - {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(summary + "\n\n")
+            f.write("=" * 50 + "\n")
+            f.write("Full Transcript:\n\n")
+            f.write(all_text)
+        
+        return {
+            "status": "success",
+            "summary": summary,
+            "file": summary_file,
+            "transcript_count": len(rows)
+        }
+        
+    except Exception as e:
+        logger.error(f"Summarization error: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/download_transcript")
+async def download_transcript():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT text, translations, created_at FROM transcripts ORDER BY id ASC")
+        rows = c.fetchall()
+        conn.close()
+        
+        output = io.StringIO()
+        output.write(f"Tour Guide Session Transcript\n")
+        output.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+        output.write("=" * 50 + "\n\n")
+        
+        for r in rows:
+            output.write(f"[{r[2]}]\n")
+            output.write(f"Original: {r[0]}\n")
+            try:
+                translations = json.loads(r[1]) if r[1] else {}
+                for lang, text in translations.items():
+                    output.write(f"{lang}: {text}\n")
+            except:
+                pass
+            output.write("\n")
+        
+        content = output.getvalue()
+        
+        from fastapi.responses import Response
+        return Response(
+            content=content,
+            media_type="text/plain",
+            headers={"Content-Disposition": f'attachment; filename="transcript_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt"'}
+        )
+        
+    except Exception as e:
+        logger.error(f"Download error: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/clear_session")
+async def clear_session():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("DELETE FROM transcripts")
+        conn.commit()
+        conn.close()
+        
+        if os.path.exists("guide_transcript.txt"):
+            os.remove("guide_transcript.txt")
+        
+        return {"status": "success", "message": "Session cleared"}
+    except Exception as e:
+        logger.error(f"Clear session error: {e}")
+        return {"status": "error", "message": str(e)}
 
 @app.get("/export_places")
 async def export_places():
