@@ -1007,17 +1007,18 @@ window.loadRecordings = async function () {
     } catch (e) {
         log("Rec Error: " + e);
     }
+}
 
 
-    window.confirmShutdown = async function () {
-        if (confirm("⚠️ SYSTEM SHUTDOWN ⚠️\n\nAre you sure you want to STOP the server program?\nThis will disconnect all users.")) {
-            try {
-                await fetch('/shutdown', { method: 'POST' });
-                alert("Server is shutting down...");
-                document.body.innerHTML = "<h1 style='color:white; text-align:center; margin-top:50px;'>Server Stopped</h1>";
-            } catch (e) {
-                alert("Error stopping: " + e);
-            }
+window.confirmShutdown = async function () {
+    if (confirm("⚠️ SYSTEM SHUTDOWN ⚠️\n\nAre you sure you want to STOP the server program?\nThis will disconnect all users.")) {
+        try {
+            await fetch('/shutdown', { method: 'POST' });
+            alert("Server is shutting down...");
+            document.body.innerHTML = "<h1 style='color:white; text-align:center; margin-top:50px;'>Server Stopped</h1>";
+        } catch (e) {
+            alert("Error stopping: " + e);
         }
     }
+}
 
