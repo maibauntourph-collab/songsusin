@@ -388,6 +388,9 @@ async def get_recordings():
     files.sort(key=lambda x: os.path.getmtime(os.path.join("recordings", x)), reverse=True)
     return {"files": files}
 
+# Ensure recordings directory exists before mounting
+os.makedirs("recordings", exist_ok=True)
+
 # Mount recordings for download
 app.mount("/recordings", StaticFiles(directory="recordings"), name="recordings")
 
@@ -407,5 +410,4 @@ async def restart_server():
 
 if __name__ == "__main__":
     import uvicorn
-    # Use 0.0.0.0 to allow external access (e.g. from ngrok)
-    uvicorn.run(sio_app, host="0.0.0.0", port=3000)
+    uvicorn.run(sio_app, host="0.0.0.0", port=5000)
