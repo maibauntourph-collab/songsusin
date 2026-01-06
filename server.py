@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 import socketio
 from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
-from aiortc.contrib.media import MediaRelay
+from aiortc.contrib.media import MediaRelay, MediaRecorder
 
 # Log Setup
 logging.basicConfig(level=logging.INFO)
@@ -86,6 +86,15 @@ async def offer(sid, data):
             logger.info(f"Guide track received: kind={track.kind}, id={track.id}")
             if track.kind == "audio":
                 guide_track = track
+                
+                # Start Recording
+                os.makedirs("recordings", exist_ok=True)
+                rec_filename = f"recordings/guide_{uuid.uuid4().hex[:8]}.wav"
+                recorder = MediaRecorder(rec_filename)
+                recorder.addTrack(track)
+                await recorder.start()
+                logger.info(f"Recording started: {rec_filename}")
+                
                 # Notify all tourists that guide is ready
                 logger.info("Broadcasting guide_ready event to tourists")
                 await sio_server.emit('guide_ready', room='tourists')
@@ -93,6 +102,8 @@ async def offer(sid, data):
             @track.on("ended")
             async def on_ended():
                 logger.info(f"Track {track.id} ended")
+                await recorder.stop()
+                logger.info(f"Recording stopped: {rec_filename}")
                 
         await pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type=type_))
         answer = await pc.createAnswer()
