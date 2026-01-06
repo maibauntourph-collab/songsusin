@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+python-socketio
+aiortc
+aiohttp
+cryptography
+netifaces
+deep-translator
+pandas
+openpyxl
+python-multipart

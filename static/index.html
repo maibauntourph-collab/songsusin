@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile Audio Guide</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            color: #333;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-guide {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-tourist {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-stop {
+            background: #dc3545;
+            color: white;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        #debug {
+            font-size: 0.8rem;
+            color: #999;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            text-align: left;
+        }
+
+        /* Audio Meter Styles */
+        .meter-container {
+            width: 100%;
+            height: 20px;
+            background: #ddd;
+            border-radius: 10px;
+            margin-top: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .meter-fill {
+            height: 100%;
+            width: 0%;
+            background: #28a745;
+            transition: width 0.1s linear;
+        }
+
+        .meter-label {
+            font-size: 0.8rem;
+            color: #555;
+            margin-bottom: 5px;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" id="role-selection">
+        <h1>Role Selection</h1>
+        <button class="btn-guide" onclick="selectRole('guide')">I am Guide (Speaker)</button>
+        <button class="btn-tourist" onclick="selectRole('tourist')">I am Tourist (Listener)</button>
+    </div>
+
+    <div class="container hidden" id="guide-controls">
+        <h1>Guide Mode</h1>
+        <div class="status" id="guide-status">Ready</div>
+        <div class="data-counter" id="guide-counter">TX: 0 KB</div>
+
+        <!-- Guide Meter -->
+        <span class="meter-label">Microphone Level:</span>
+        <div class="meter-container">
+            <div class="meter-fill" id="guide-meter"></div>
+        </div>
+
+        <button class="btn-guide" onclick="startBroadcast()">Start Broadcast</button>
+        <button class="btn-stop hidden" onclick="stopBroadcast()">Stop</button>
+
+        <!-- Guide Transcript Feedback -->
+        <div id="guide-transcript-box" style="
+            background: #222;
+            color: #ccff00; 
+            font-family: 'Courier New', monospace;
+            font-size: 1.0rem;
+            padding: 10px;
+            margin-top: 15px;
+            border: 1px solid #555;
+            border-radius: 8px;
+            min-height: 40px;
+            text-align: center;
+        ">
+            (Your Speech Text Will Appear Here...)
+        </div>
+
+        <!-- Guide Admin Panel -->
+        <div id="guide-admin-panel" style="margin-top: 30px; border-top: 1px solid #444; padding-top: 20px;">
+            <h3>🛠️ Guide Admin (Register Info)</h3>
+
+            <!-- Manual Entry -->
+            <div style="background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <h4>Manual Entry</h4>
+                <input type="text" id="place-name" placeholder="Place Name (e.g. Gyeongbokgung)"
+                    style="width: 100%; margin-bottom: 10px; padding: 8px;">
+                <textarea id="place-desc" placeholder="Description..."
+                    style="width: 100%; margin-bottom: 10px; padding: 8px; height: 60px;"></textarea>
+                <button onclick="addPlace()" style="background: #17a2b8; width: 100%;">Add Place</button>
+            </div>
+
+            <!-- Excel Upload -->
+            <div style="background: #2a2a2a; padding: 15px; border-radius: 8px;">
+                <h4>Excel Upload</h4>
+                <p style="font-size: 0.8rem; color: #aaa;">Columns: <code>name</code>, <code>description</code></p>
+                <input type="file" id="excel-file" accept=".xlsx, .csv" style="margin-bottom: 10px; color: #fff;">
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="uploadExcel()" style="background: #28a745; flex: 1;">Upload Excel</button>
+                    <button onclick="downloadExcel()" style="background: #ffc107; flex: 1; color: #000;">Download
+                        Excel</button>
+                </div>
+            </div>
+
+            <div id="admin-status" style="margin-top: 10px; font-size: 0.9rem;"></div>
+
+            <!-- Places List -->
+            <h4 style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">📋 Registered Places</h4>
+            <div id="places-list" style="max-height: 200px; overflow-y: auto; margin-top: 10px;">
+                <!-- Items will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <div class="container hidden" id="tourist-controls">
+        <h1>Tourist Mode</h1>
+        <div class="status" id="tourist-status">Waiting for stream...</div>
+        <div class="data-counter" id="tourist-counter">RX: 0 KB</div>
+
+        <!-- Karaoke / STT Box -->
+        <div id="transcript-box" style="
+            background: #000;
+            color: #ccff00; 
+            font-family: 'Courier New', monospace;
+            font-size: 1.2rem;
+            padding: 15px;
+            margin-top: 20px;
+            border: 2px solid #ccff00;
+            border-radius: 10px;
+            min-height: 80px;
+            text-align: center;
+            box-shadow: 0 0 10px #ccff00;
+            text-shadow: 0 0 5px #ccff00;
+            overflow-y: auto;
+            max-height: 150px;
+        ">
+            (Waiting for Guide...)
+        </div>
+
+        <!-- Translation Controls -->
+        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+            <select id="lang-select"
+                style="padding: 10px; border-radius: 5px; background: #333; color: white; border: 1px solid #555;">
+                <option value="original">Original (No Trans)</option>
+                <option value="ko">한국어 (Korean)</option>
+                <option value="en">English</option>
+                <option value="ja" selected>日本語 (Japanese)</option>
+                <option value="zh-CN">中文 (Chinese)</option>
+            </select>
+
+            <button id="tts-btn" style="
+                padding: 10px; 
+                border-radius: 5px; 
+                background: #444; 
+                color: white; 
+                border: 1px solid #555;
+            ">Sound: OFF</button>
+        </div>
+
+        <!-- Tourist Meter -->
+        <span class="meter-label">Audio Signal:</span>
+        <div class="meter-container">
+            <div class="meter-fill" id="tourist-meter"></div>
+        </div>
+
+        <button class="btn-tourist" id="play-btn">Tap to Enable Audio</button>
+    </div>
+
+    <div id="debug"></div>
+
+    <!-- Socket.IO CDN -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"
+        integrity="sha384-Gr6Lu2Ajx28mzwyVR8CFkULdCU7kMlZ9UthllibdOSo6qAiN+yXNHqtgdTvFXMT4"
+        crossorigin="anonymous"></script>
+    <script src="static/app.js"></script>
+</body>
+
+</html>
