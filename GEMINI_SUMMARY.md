@@ -26,8 +26,8 @@
 
 #### 2026-01-06
 - **Mobile Support**: 안드로이드(Termux) 설치 스크립트(`termux_install.sh`) 및 모바일 구동 가이드(`MOBILE_GUIDE.md`) 작성.
-- **Server Control**: 웹 UI 상단에 제어 툴바(새로고침, 방송시작, 서버종료) 추가.
-- **Remote Shutdown**: `/shutdown` API 및 원격 종료 기능 구현.
+- **Server Control**: 웹 UI 상단에 제어 툴바(새로고침, 재실행, 방송시작, 서버종료) 추가.
+- **Remote Shutdown/Restart**: `/shutdown` 및 `/restart` API 구현.
 - **Recording**: 서버 측 오디오 스트림 자동 녹음(`wav`) 및 다운로드 기능 구현.
 - **Session History**: STT 대화 내용 DB 저장 및 조회/다운로드 기능 구현.
 - **Docs**: `user_guide.md` 최신화 (한글 매뉴얼 업데이트).

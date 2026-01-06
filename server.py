@@ -397,6 +397,14 @@ async def shutdown_server():
     os.kill(os.getpid(), 9) # Force kill for immediate effect on Windows
     return {"status": "shutting_down"}
 
+@app.post("/restart")
+async def restart_server():
+    logger.info("Restart requested")
+    import sys
+    # This replaces the current process with a new one
+    os.execv(sys.executable, ['python'] + sys.argv)
+    return {"status": "restarting"}
+
 if __name__ == "__main__":
     import uvicorn
     # Use 0.0.0.0 to allow external access (e.g. from ngrok)

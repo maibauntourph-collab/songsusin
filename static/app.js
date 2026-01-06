@@ -1022,3 +1022,15 @@ window.confirmShutdown = async function () {
     }
 }
 
+window.confirmRestart = async function () {
+    if (confirm("⚠️ SYSTEM RESTART ⚠️\n\nAre you sure you want to RESTART the server?\nAll current connections will be reset.")) {
+        try {
+            await fetch('/restart', { method: 'POST' });
+            alert("Server is restarting... Please wait 5 seconds and refresh.");
+            setTimeout(() => { location.reload(); }, 5000);
+        } catch (e) {
+            alert("Error restarting: " + e);
+        }
+    }
+}
+
