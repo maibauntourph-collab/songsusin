@@ -203,8 +203,16 @@ async def transcript_msg(sid, data):
         try:
             with open("guide_transcript.txt", "a", encoding="utf-8") as f:
                 f.write(f"{text}\n")
+            
+            # Save to DB
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute("INSERT INTO transcripts (text, translations) VALUES (?, ?)", (text, json.dumps(response['translations'])))
+            conn.commit()
+            conn.close()
+            
         except Exception as e:
-            logger.error(f"File save error: {e}")
+            logger.error(f"File/DB save error: {e}")
 
     await sio_server.emit('transcript', response, room='tourists')
 
@@ -223,6 +231,14 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS transcripts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            text TEXT NOT NULL,
+            translations TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -298,6 +314,31 @@ async def get_places():
     
     places = [{"id": r[0], "name": r[1], "description": r[2]} for r in rows]
     return {"places": places}
+
+@app.get("/history")
+async def get_history():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT id, text, translations, created_at FROM transcripts ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
+    
+    history = []
+    for r in rows:
+        translations = {}
+        try:
+            if r[2]:
+                translations = json.loads(r[2])
+        except:
+            pass
+        history.append({
+            "id": r[0],
+            "text": r[1],
+            "translations": translations,
+            "created_at": r[3]
+        })
+    
+    return {"history": history}
 
 @app.get("/export_places")
 async def export_places():

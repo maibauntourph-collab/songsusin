@@ -913,3 +913,71 @@ window.selectRole = function (r) {
     }
 }
 
+// History Functions
+window.loadHistory = async function () {
+    try {
+        const res = await fetch('/history');
+        const data = await res.json();
+        const container = document.getElementById('history-list');
+        if (!container) return;
+
+        container.innerHTML = "";
+
+        if (data.history && data.history.length > 0) {
+            data.history.forEach(item => {
+                const div = document.createElement('div');
+                div.style.cssText = "border-bottom: 1px solid #444; padding: 5px; margin-bottom: 5px;";
+
+                const time = new Date(item.created_at).toLocaleTimeString();
+                div.innerHTML = `
+                    <div style="color: #888; font-size: 0.7rem;">${time}</div>
+                    <div style="color: #fff; margin-top: 2px;">${item.text}</div>
+                    <div style="color: #aaa; font-size: 0.8rem; margin-top: 2px;">
+                        EN: ${item.translations?.en || '-'}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        } else {
+            container.innerHTML = "<div style='color: #888; font-style: italic;'>No history found.</div>";
+        }
+    } catch (e) {
+        log("History Error: " + e);
+    }
+}
+
+window.downloadHistory = async function () {
+    try {
+        const res = await fetch('/history');
+        const data = await res.json();
+
+        if (!data.history || data.history.length === 0) {
+            alert("No history to download.");
+            return;
+        }
+
+        let txt = "== Mobile Guide Session Log ==\n\n";
+        data.history.forEach(item => {
+            txt += `[${item.created_at}] ${item.text}\n`;
+            if (item.translations) {
+                txt += `   (EN): ${item.translations.en}\n`;
+                txt += `   (JP): ${item.translations.ja}\n`;
+                txt += `   (CN): ${item.translations['zh-CN']}\n`;
+            }
+            txt += "----------------------------\n";
+        });
+
+        const blob = new Blob([txt], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "session_history.txt";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        alert("Download failed: " + e);
+    }
+}
+

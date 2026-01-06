@@ -172,6 +172,18 @@
             <div id="places-list" style="max-height: 200px; overflow-y: auto; margin-top: 10px;">
                 <!-- Items will be loaded here -->
             </div>
+
+            <!-- History Section -->
+            <h4 style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">📜 Session History (Analysis)
+            </h4>
+            <button onclick="loadHistory()" style="background: #6f42c1; width: 100%; margin-bottom: 10px;">Refresh
+                History</button>
+            <div id="history-list"
+                style="max-height: 250px; overflow-y: auto; background: #222; padding: 10px; border-radius: 5px;">
+                <div style='color: #888; font-style: italic;'>Click refresh to see logs...</div>
+            </div>
+            <button onclick="downloadHistory()" style="background: #007bff; width: 100%; margin-top: 10px;">Download
+                History Log</button>
         </div>
     </div>
 
