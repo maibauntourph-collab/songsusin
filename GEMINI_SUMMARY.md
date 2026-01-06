@@ -33,6 +33,9 @@
 - **Docs**: `user_guide.md` 최신화 (한글 매뉴얼 업데이트).
 - **Code Sync**: GitHub 원격 저장소에서 최신 코드 Pull 완료 (서버 로직 및 UI 업데이트 반영).
 - **Karaoke View**: 전체 대화 내용을 유지하면서 현재 설명 중인 문장을 형광펜 효과(`highlight-pen`)로 강조하는 "노래방 가사/프롬프터" 스타일 UI 구현.
+- **Background Mode**: 화면이 꺼지거나 백그라운드 상태에서도 오디오가 끊기지 않도록 `Silent Audio Loop` 및 `WakeLock` 적용. 잠금화면 제어 지원.
+- **Toggle Control**: 방송 시작/일시정지 버튼을 하나로 통합하고, 상단 툴바에서도 제어 가능하도록 개선.
+
 
 
 

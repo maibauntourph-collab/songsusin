@@ -75,12 +75,25 @@ function log(msg) {
 // Initial selectRole removed. Use the merged one below.
 
 // --- Audio Context Handling (Tourist) ---
+let dummyAudio = null;
+
 function initAudioContext() {
     try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext();
         log("AudioContext State: " + audioCtx.state);
         updatePlayButton();
+
+        // Background Audio Hack (Silent Loop)
+        // This keeps the AudioContext active even when screen is locked/backgrounded on iOS/Android
+        if (!dummyAudio) {
+            dummyAudio = document.createElement('audio');
+            // Tiny silent mp3 base64
+            dummyAudio.src = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD//////////////////////////////////////////////////////////////////wAAAP//OEAAAAAAAAAAAAAAAAAAAAAATEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//OEAAAAAAAAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAA==';
+            dummyAudio.loop = true;
+            dummyAudio.volume = 0.01; // Not perfectly 0 to avoid being "optimized out" by some OS
+            document.body.appendChild(dummyAudio);
+        }
 
         audioCtx.onstatechange = () => {
             log("AudioContext State Change: " + audioCtx.state);
@@ -93,22 +106,6 @@ function initAudioContext() {
     }
 }
 
-function updatePlayButton() {
-    const btn = document.getElementById('play-btn');
-    if (!audioCtx) return;
-
-    if (audioCtx.state === 'running') {
-        btn.textContent = "Audio Active (Tap to Test)";
-        btn.style.background = "#6c757d"; // Grey out
-        // Optional: Hide it, or keep it for manual resume if needed
-        btn.style.display = 'none';
-    } else {
-        btn.style.display = 'block';
-        btn.textContent = "Tap to Enable Audio";
-        btn.style.background = "#28a745";
-    }
-}
-
 function resumeAudioContext() {
     if (!audioCtx) { initAudioContext(); }
 
@@ -116,6 +113,15 @@ function resumeAudioContext() {
         audioCtx.resume().then(() => {
             log("AudioContext Resumed by User");
             updatePlayButton();
+
+            // Start silent loop
+            if (dummyAudio) {
+                dummyAudio.play().then(() => log("Background Keep-alive Audio Started")).catch(e => log("Keep-alive fail: " + e));
+            }
+
+            // Also acquire Wake Lock if possible
+            enableBackgroundMode();
+
         }).catch(e => {
             log("Resume failed: " + e);
             document.getElementById('play-btn').textContent = "Retry Audio";
@@ -123,26 +129,13 @@ function resumeAudioContext() {
     } else {
         log("AudioContext already running");
         updatePlayButton();
+        // Start silent loop just in case
+        if (dummyAudio && dummyAudio.paused) {
+            dummyAudio.play().then(() => log("Background Keep-alive Audio Started")).catch(e => log("Keep-alive fail: " + e));
+        }
     }
 }
 
-// Bind events safely after DOM load
-document.addEventListener('DOMContentLoaded', () => {
-    const playBtn = document.getElementById('play-btn');
-    if (playBtn) {
-        // Handle both click and touchstart for better mobile response
-        const handleInteraction = (e) => {
-            e.preventDefault(); // Prevent double-firing on some devices
-            log("Button Interact: " + e.type);
-            playBtn.textContent = "Processing...";
-            playBtn.style.background = "#ffc107"; // Yellow indicating working
-            resumeAudioContext();
-        };
-
-        playBtn.addEventListener('click', handleInteraction);
-        playBtn.addEventListener('touchstart', handleInteraction);
-    }
-});
 
 // Helper to wait for ICE gathering to complete
 function waitForICEGathering(pc) {
@@ -164,10 +157,34 @@ function waitForICEGathering(pc) {
 }
 
 // --- Guide Logic ---
+// --- Guide Logic ---
+let wakeLock = null;
+
+window.toggleBroadcast = function () {
+    if (isBroadcasting) {
+        stopBroadcast();
+    } else {
+        startBroadcast();
+    }
+}
+
 window.startBroadcast = async function () {
     log("Start Broadcast clicked");
     try {
         if (isBroadcasting) return;
+
+        // Update Buttons
+        const toggleBtn = document.getElementById('broadcast-toggle-btn');
+        const toolbarBtn = document.getElementById('toolbar-run-btn');
+
+        if (toggleBtn) {
+            toggleBtn.innerHTML = "⏸️ Pause Broadcast";
+            toggleBtn.classList.remove('btn-guide');
+            toggleBtn.classList.add('btn-stop'); // Make it red/warning style
+            toggleBtn.style.background = "#dc3545";
+        }
+        if (toolbarBtn) toolbarBtn.innerHTML = "<span style='font-size: 1.5rem;'>⏸️</span>";
+
         isBroadcasting = true;
 
         socket.emit('reset_audio_session');
@@ -179,7 +196,7 @@ window.startBroadcast = async function () {
         // Wake Lock (Keep screen on)
         try {
             if ('wakeLock' in navigator) {
-                await navigator.wakeLock.request('screen');
+                wakeLock = await navigator.wakeLock.request('screen');
                 log("Screen Wake Lock active");
             }
         } catch (err) {
@@ -209,7 +226,7 @@ window.startBroadcast = async function () {
             log("Microphone access denied: " + e);
             els.guideStatus.textContent = "Error: Microphone Denied";
             els.guideStatus.classList.add('status-error');
-            isBroadcasting = false;
+            stopBroadcast(); // Reset UI
             return;
         }
 
@@ -312,8 +329,6 @@ window.startBroadcast = async function () {
         }
         // Initialize WebRTC
         els.guideStatus.textContent = "Broadcasting (WebRTC)...";
-        document.querySelector('#guide-controls .btn-guide').classList.add('hidden');
-        document.querySelector('#guide-controls .btn-stop').classList.remove('hidden');
 
         // Initialize WebRTC
         createPeerConnection();
@@ -336,6 +351,7 @@ window.startBroadcast = async function () {
 
     } catch (err) {
         log("Error starting broadcast: " + err);
+        stopBroadcast();
     }
 }
 
@@ -343,10 +359,29 @@ window.stopBroadcast = function () {
     log("Stop Broadcast clicked");
     isBroadcasting = false;
 
+    // Update Buttons
+    const toggleBtn = document.getElementById('broadcast-toggle-btn');
+    const toolbarBtn = document.getElementById('toolbar-run-btn');
+
+    if (toggleBtn) {
+        toggleBtn.innerHTML = "▶️ Start Broadcast";
+        toggleBtn.classList.add('btn-guide');
+        toggleBtn.classList.remove('btn-stop');
+        toggleBtn.style.background = ""; // Reset
+    }
+    if (toolbarBtn) toolbarBtn.innerHTML = "<span style='font-size: 1.5rem;'>▶️</span>";
+
+
     if (pc) pc.close();
     if (localStream) localStream.getTracks().forEach(track => track.stop());
+    if (wakeLock) {
+        wakeLock.release().then(() => wakeLock = null);
+    }
 
-    location.reload();
+    // Ideally we shouldn't reload to keep state, just reset
+    // location.reload(); 
+    // Manual reset:
+    els.guideStatus.textContent = "Ready (Paused)";
 }
 
 // Data Counters
