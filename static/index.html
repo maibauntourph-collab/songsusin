@@ -103,6 +103,39 @@
 </head>
 
 <body>
+    <!-- Server Control Toolbar -->
+    <div style="
+        position: fixed; 
+        top: 0; 
+        left: 0; 
+        width: 100%; 
+        background: #333; 
+        color: white; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        padding: 10px 15px; 
+        box-sizing: border-box; 
+        z-index: 1000;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    ">
+        <div style="font-weight: bold; font-size: 1.1rem;">Guide System</div>
+        <div style="display: flex; gap: 15px;">
+            <!-- Refresh -->
+            <div onclick="location.reload()" style="cursor: pointer; text-align: center;">
+                <span style="font-size: 1.5rem;">🔄</span>
+            </div>
+            <!-- Run (Broadcast) - Visible only in Guide Mode usually, but here globally or conditional -->
+            <!-- We'll toggle visibility or just have it as a Status indicator if playing -->
+
+            <!-- Stop Server (Kill) -->
+            <div onclick="confirmShutdown()" style="cursor: pointer; text-align: center;">
+                <span style="font-size: 1.5rem;">🛑</span>
+            </div>
+        </div>
+    </div>
+    <div style="height: 60px;"></div> <!-- Spacer -->
+
     <div class="container" id="role-selection">
         <h1>Role Selection</h1>
         <button class="btn-guide" onclick="selectRole('guide')">I am Guide (Speaker)</button>

@@ -391,6 +391,12 @@ async def get_recordings():
 # Mount recordings for download
 app.mount("/recordings", StaticFiles(directory="recordings"), name="recordings")
 
+@app.post("/shutdown")
+async def shutdown_server():
+    logger.info("Shutdown requested")
+    os.kill(os.getpid(), 9) # Force kill for immediate effect on Windows
+    return {"status": "shutting_down"}
+
 if __name__ == "__main__":
     import uvicorn
     # Use 0.0.0.0 to allow external access (e.g. from ngrok)
