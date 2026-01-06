@@ -377,6 +377,20 @@ async def export_places():
         logger.error(f"Export Error: {e}")
         return {"status": "error", "message": str(e)}
 
+@app.get("/api/recordings")
+async def get_recordings():
+    files = []
+    if os.path.exists("recordings"):
+        for f in os.listdir("recordings"):
+            if f.endswith(".wav"):
+                files.append(f)
+    # Sort by time (newest first)
+    files.sort(key=lambda x: os.path.getmtime(os.path.join("recordings", x)), reverse=True)
+    return {"files": files}
+
+# Mount recordings for download
+app.mount("/recordings", StaticFiles(directory="recordings"), name="recordings")
+
 if __name__ == "__main__":
     import uvicorn
     # Use 0.0.0.0 to allow external access (e.g. from ngrok)

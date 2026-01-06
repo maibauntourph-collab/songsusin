@@ -981,3 +981,31 @@ window.downloadHistory = async function () {
     }
 }
 
+window.loadRecordings = async function () {
+    try {
+        const res = await fetch('/api/recordings');
+        const data = await res.json();
+        const container = document.getElementById('recording-list');
+        if (!container) return;
+
+        container.innerHTML = "";
+
+        if (data.files && data.files.length > 0) {
+            data.files.forEach(file => {
+                const div = document.createElement('div');
+                div.style.cssText = "border-bottom: 1px solid #444; padding: 5px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;";
+
+                div.innerHTML = `
+                    <span style="color: #ddd; font-size: 0.8rem;">${file}</span>
+                    <a href="/recordings/${file}" download style="background: #28a745; color: white; text-decoration: none; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Download</a>
+                `;
+                container.appendChild(div);
+            });
+        } else {
+            container.innerHTML = "<div style='color: #888; font-style: italic;'>No recordings found.</div>";
+        }
+    } catch (e) {
+        log("Rec Error: " + e);
+    }
+}
+

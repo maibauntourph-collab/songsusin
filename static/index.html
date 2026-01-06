@@ -176,14 +176,25 @@
             <!-- History Section -->
             <h4 style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">📜 Session History (Analysis)
             </h4>
-            <button onclick="loadHistory()" style="background: #6f42c1; width: 100%; margin-bottom: 10px;">Refresh
-                History</button>
-            <div id="history-list"
-                style="max-height: 250px; overflow-y: auto; background: #222; padding: 10px; border-radius: 5px;">
-                <div style='color: #888; font-style: italic;'>Click refresh to see logs...</div>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="loadHistory()" style="background: #6f42c1; flex: 1;">Refresh Text Log</button>
+                <button onclick="loadRecordings()" style="background: #e0a800; flex: 1; color: #000;">Refresh
+                    Audio</button>
             </div>
-            <button onclick="downloadHistory()" style="background: #007bff; width: 100%; margin-top: 10px;">Download
-                History Log</button>
+
+            <!-- Tabs or Stacked lists -->
+            <h5 style="color: #aaa; margin: 10px 0 5px;">Text Transcripts</h5>
+            <div id="history-list"
+                style="max-height: 200px; overflow-y: auto; background: #222; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                <div style='color: #888; font-style: italic;'>Click refresh...</div>
+            </div>
+            <button onclick="downloadHistory()" style="background: #007bff; width: 100%;">Download Text Log</button>
+
+            <h5 style="color: #aaa; margin: 15px 0 5px;">Audio Recordings</h5>
+            <div id="recording-list"
+                style="max-height: 150px; overflow-y: auto; background: #222; padding: 10px; border-radius: 5px;">
+                <div style='color: #888; font-style: italic;'>Click refresh audio...</div>
+            </div>
         </div>
     </div>
 
