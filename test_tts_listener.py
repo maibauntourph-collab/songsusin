@@ -19,7 +19,7 @@ async def transcript(data):
     print(f"RECEIVED TRANSCRIPT: {data}")
 
 async def main():
-    await sio.connect('http://localhost:3000')
+    await sio.connect('http://localhost:5000')
     print("Waiting for events...")
     # Keep running to listen
     await asyncio.sleep(10)

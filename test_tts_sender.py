@@ -13,7 +13,7 @@ async def connect():
     await sio.emit('transcript_msg', {'text': '안녕하세요 테스트입니다.', 'isFinal': True})
 
 async def main():
-    await sio.connect('http://localhost:3000')
+    await sio.connect('http://localhost:5000')
     await asyncio.sleep(2) # Give time to connect and send
     await sio.disconnect()
 

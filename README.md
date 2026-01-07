@@ -20,7 +20,7 @@ pip install -r requirements.txt
 ```bash
 python server.py
 ```
-서버가 `http://0.0.0.0:3000` 에서 시작됩니다.
+서버가 `http://0.0.0.0:5000` 에서 시작됩니다.
 
 ## 3. 모바일 접속 방법 (Mobile Connection)
 
@@ -31,7 +31,7 @@ WebRTC는 **HTTPS** 또는 **Localhost** 환경에서만 마이크 권한을 허
 1. [ngrok 다운로드](https://ngrok.com/download) 및 설치.
 2. 터미널에서 다음 명령어 실행:
    ```bash
-   ngrok http 3000
+   ngrok http 5000
    ```
 3. 생성된 `https://xxxx-xxxx.ngrok-free.app` 주소를 모바일 브라우저(Chrome/Safari)에서 엽니다.
 
@@ -56,7 +56,7 @@ WebRTC는 **HTTPS** 또는 **Localhost** 환경에서만 마이크 권한을 허
   - ngrok 무료 버전은 속도 제한이 있을 수 있습니다.
 - **연결 실패**:
   - `server.py`가 실행 중인지 확인하세요.
-  - 같은 와이파이 내라면 PC의 IP 주소 `https://192.168.x.x:3000` (SSL 인증서 필요) 또는 ngrok을 권장합니다.
+  - 같은 와이파이 내라면 PC의 IP 주소 `https://192.168.x.x:5000` (SSL 인증서 필요) 또는 ngrok을 권장합니다.
 
 ## 6. 주요 기능 (Features)
 

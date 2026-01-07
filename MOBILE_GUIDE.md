@@ -32,11 +32,24 @@ chmod +x termux_install.sh
 ```bash
 python server.py
 ```
+-에러시
+--FastAPI 버전 고정 + Rust 설치
+처음 
+  pkg update && pkg upgrade
+  pkg install python rust clang make
+  pip install --upgrade pip setuptools wheel
+두번째
+  pip install "pydantic<2"
+  pip install fastapi uvicorn 
+
+
 
 ## 5. 접속 방법
-- **본인 폰(서버)**: 브라우저에서 `http://localhost:3000` 접속
-- **다른 사람(손님)**:
-    - 폰의 **모바일 핫스팟**을 켭니다.
-    - 손님들이 핫스팟에 연결합니다.
-    - Termux에서 `ifconfig`를 입력하여 IP 주소(예: `192.168.43.1`)를 확인합니다.
-    - 손님들은 브라우저에 `http://192.168.43.1:3000`을 입력하여 접속합니다.
+- **본인 폰(서버)**: 브라우저에서 `http://localhost:5000` 접속
+  - "I am Guide" 선택 -> 마이크 허용 -> Start Broadcast
+- **손님 폰**:
+  - 핫스팟에 연결된 상태에서.
+  - 본인 폰(서버)의 IP 주소를 알아야 합니다 (Termux에서 `ifconfig` 입력).
+  - 예: `192.168.43.1` (핫스팟 게이트웨이)
+  - 손님들은 브라우저에 `http://192.168.43.1:5000`을 입력하여 접속합니다.
+  - "I am Tourist" 선택 -> Tap to Enable Audio.

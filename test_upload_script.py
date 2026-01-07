@@ -22,10 +22,10 @@ headers = {
     'Content-Length': str(len(body_bytes))
 }
 
-print(f"Attempting upload to localhost:3000 with {len(body_bytes)} bytes...")
+print(f"Attempting upload to localhost:5000 with {len(body_bytes)} bytes...")
 
 try:
-    conn = http.client.HTTPConnection("localhost", 3000, timeout=5)
+    conn = http.client.HTTPConnection("localhost", 5000, timeout=5)
     conn.request("POST", "/upload_places", body=body_bytes, headers=headers)
     response = conn.getresponse()
     print(f"Status: {response.status}")

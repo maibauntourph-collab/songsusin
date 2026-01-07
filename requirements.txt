@@ -9,17 +9,4 @@ deep-translator
 pandas
 openpyxl
 python-multipart
-aiohttp
-aiortc
-cryptography
-deep-translator
-fastapi
-netifaces
-openpyxl
-pandas
-pydantic
-python-multipart
-python-socketio
-socketio
-uvicorn
 openai
