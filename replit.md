@@ -64,3 +64,15 @@ The system uses MediaSource Extensions (MSE) API for continuous audio streaming:
 - Fixed audio playback: Implemented MediaSource Extension streaming
 - Added init segment caching and ordering for late-joining tourists
 - Added Korean documentation (AUDIO_DEBUG_KR.md)
+- Simplified tourist audio: Auto-receives when guide broadcasts (no manual controls)
+- Added socket event guards to prevent stale data processing
+- WebRTC fallback to WebSocket audio without retry loops
+
+## Audio Control
+- **Guide**: Has Start/Stop Broadcast buttons to control when audio is transmitted
+- **Tourist**: Automatically receives audio when Guide broadcasts - no manual controls needed
+
+State management:
+- `touristAudioActive`: Set to true when tourist selects role, audio events are processed
+- Socket guards on `audio_chunk` and `audio_init` prevent stale data processing
+- WebRTC failure automatically falls back to WebSocket audio streaming

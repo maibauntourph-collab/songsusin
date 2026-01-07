@@ -7,6 +7,10 @@ let isBroadcasting = false;
 let animationId = null;
 let recognition = null;
 
+// Manual audio control state (prevent auto-reconnect loops)
+// Tourist audio is always active once role is selected
+let touristAudioActive = false;
+
 // Audio Visualizer Logic
 function setupAudioAnalysis(stream, meterId) {
     try {
@@ -148,6 +152,15 @@ document.addEventListener('DOMContentLoaded', () => {
             playBtn.textContent = "Processing...";
             playBtn.style.background = "#ffc107"; // Yellow indicating working
             resumeAudioContext();
+            
+            // Retry connection if tourist and no active connection
+            if (role === 'tourist' && touristAudioActive) {
+                if (!pc || pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+                    log("Retrying tourist connection...");
+                    teardownTouristAudio();
+                    startTouristReceiver();
+                }
+            }
         };
 
         playBtn.addEventListener('click', handleInteraction);
@@ -520,11 +533,8 @@ function setupFallbackRecorder(stream) {
 }
 
 socket.on('reconnect_ack', () => {
-    log("Server acknowledged reconnect request. Restarting WebRTC...");
-    // Force a role re-selection or re-init
-    if (role === 'tourist') {
-        startTouristReceiver(); // Try to get offer again
-    }
+    log("Server acknowledged reconnect request.");
+    // Tourist relies on WebSocket fallback - no WebRTC retry needed
 });
 
 // --- Tourist Logic ---
@@ -544,9 +554,10 @@ function createPeerConnection() {
             els.touristStatus.textContent = `Status: ${pc.iceConnectionState}`;
         }
         if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-            log("WebRTC Unstable (" + pc.iceConnectionState + "). Attempting Reconnect...");
-            els.touristStatus.textContent = "Connection Lost. Reconnecting...";
-            if (role === 'tourist') socket.emit('request_reconnect');
+            log("WebRTC Unstable (" + pc.iceConnectionState + ")");
+            // Tourist uses WebSocket fallback - no retry loop needed
+            els.touristStatus.textContent = "Using WebSocket audio...";
+            log("WebRTC failed - relying on WebSocket fallback");
         } else if (pc.iceConnectionState === 'connected') {
             log("ICE Connected!");
             if (role === 'tourist' && els.touristStatus.textContent.includes("Waiting")) {
@@ -648,11 +659,58 @@ window.selectRole = function (r) {
     } else {
         els.touristCtrl.classList.remove('hidden');
         initAudioContext();
-        // Tourist immediate logic
-        startTouristReceiver();
+        touristAudioActive = true;
+        els.touristStatus.textContent = "Waiting for Guide...";
+        // Don't auto-start WebRTC - wait for guide_ready or audio_chunk
     }
     socket.emit('join_room', { role: role });
 }
+
+// Full teardown of all tourist audio resources
+function teardownTouristAudio() {
+    log("Tearing down tourist audio...");
+    
+    // Close WebRTC
+    if (pc) {
+        pc.close();
+        pc = null;
+    }
+    
+    // Close fallback audio
+    if (fallbackAudioElement) {
+        fallbackAudioElement.pause();
+        fallbackAudioElement.remove();
+        fallbackAudioElement = null;
+    }
+    if (mediaSource && mediaSource.readyState === 'open') {
+        try { mediaSource.endOfStream(); } catch(e) {}
+    }
+    mediaSource = null;
+    sourceBuffer = null;
+    isFallbackActive = false;
+    pendingBuffers = [];
+    sourceBufferReady = false;
+    initReceived = false;
+}
+
+// Reset fallback state only (keeps WebRTC intact)
+function resetFallbackState() {
+    if (fallbackAudioElement) {
+        fallbackAudioElement.pause();
+        fallbackAudioElement.remove();
+        fallbackAudioElement = null;
+    }
+    if (mediaSource && mediaSource.readyState === 'open') {
+        try { mediaSource.endOfStream(); } catch(e) {}
+    }
+    mediaSource = null;
+    sourceBuffer = null;
+    isFallbackActive = false;
+    pendingBuffers = [];
+    sourceBufferReady = false;
+    initReceived = false;
+}
+
 
 socket.on('answer', async (data) => {
     log("Received Answer");
@@ -770,6 +828,9 @@ function appendToStream(data) {
 }
 
 socket.on('audio_init', (data) => {
+    // Ignore audio if tourist has stopped listening
+    if (!touristAudioActive) return;
+    
     log("Received audio init segment from server");
 
     const toArrayBuffer = (input) => {
@@ -790,6 +851,9 @@ socket.on('audio_init', (data) => {
 });
 
 socket.on('audio_chunk', (data) => {
+    // Ignore audio if tourist has stopped listening
+    if (!touristAudioActive) return;
+    
     rxBytes += data.byteLength || data.size || 0;
     updateCounters();
 
@@ -807,10 +871,15 @@ socket.on('audio_chunk', (data) => {
 
 // --- Smart Signaling: Handle Late Join / Guide Restart ---
 socket.on('guide_ready', () => {
-    log("Guide is ready! Negotiating connection...");
-    els.touristStatus.textContent = "Guide Online. Connecting...";
-    if (role === 'tourist') {
-        startTouristReceiver(); // Re-negotiate (or start fresh) to get the track
+    log("Guide is ready!");
+    if (role === 'tourist' && touristAudioActive) {
+        els.touristStatus.textContent = "Guide Online. Connecting...";
+        // Only start if we don't have an active connection
+        if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+            log("Starting tourist connection on guide_ready");
+            teardownTouristAudio();
+            startTouristReceiver();
+        }
     }
 });
 
