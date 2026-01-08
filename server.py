@@ -315,7 +315,10 @@ async def transcript_msg(sid, data):
     text = data.get('text', '')
     is_final = data.get('isFinal', True) 
     
+    logger.info(f"[TRANSCRIPT] Received from {sid}: text='{text[:50]}...', isFinal={is_final}")
+    
     if not text:
+        logger.warning(f"[TRANSCRIPT] Empty text received from {sid}, ignoring")
         return
 
     response = {
@@ -372,8 +375,10 @@ async def transcript_msg(sid, data):
         except Exception as e:
             logger.error(f"File/DB save error: {e}")
 
+    logger.info(f"[TRANSCRIPT] Emitting to tourists and guides: original='{text[:30]}...', translations_count={len(response['translations'])}")
     await sio_server.emit('transcript', response, room='tourists')
     await sio_server.emit('transcript', response, room='guides')
+    logger.info(f"[TRANSCRIPT] Emit complete")
 
 
 # (Imports merged with top section)

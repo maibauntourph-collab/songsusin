@@ -81,6 +81,22 @@ function log(msg) {
 // --- Audio Context Handling (Tourist) ---
 let dummyAudio = null;
 
+function updatePlayButton() {
+    const playBtn = document.getElementById('play-btn');
+    if (!playBtn) return;
+    
+    if (audioCtx && audioCtx.state === 'running') {
+        playBtn.textContent = "Audio Ready";
+        playBtn.style.background = "#28a745";
+    } else if (audioCtx && audioCtx.state === 'suspended') {
+        playBtn.textContent = "Tap to Enable Audio";
+        playBtn.style.background = "#007bff";
+    } else {
+        playBtn.textContent = "Enable Audio";
+        playBtn.style.background = "#6c757d";
+    }
+}
+
 function initAudioContext() {
     try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -689,62 +705,7 @@ function createPeerConnection() {
 } // End createPeerConnection
 
 // --- Signaling ---
-socket.on('transcript', (data) => {
-    log("Received Transcript: " + data.original);
-    
-    const box = document.getElementById('transcript-box');
-    if (!box) return;
-
-    // Get selected language
-    const langSel = document.getElementById('lang-select');
-    const targetLang = langSel ? langSel.value : 'original';
-    
-    let displayText = data.original;
-    if (targetLang !== 'original' && data.translations && data.translations[targetLang]) {
-        displayText = data.translations[targetLang];
-    }
-
-    // TTS if enabled and final
-    if (data.isFinal && ttsEnabled && role === 'tourist') {
-        speakText(displayText, targetLang);
-    }
-
-    // Update UI
-    // If we have an existing interim message for this sid/index, update it?
-    // For simplicity, we'll append new bubbles or replace interim ones.
-    
-    if (data.isFinal) {
-        // Clear interim messages and add final
-        const interim = box.querySelector('.message-bubble.interim');
-        if (interim) interim.remove();
-        
-        const bubble = document.createElement('div');
-        bubble.className = 'message-bubble final';
-        // Add highlight class for Android/iOS consistency
-        bubble.innerHTML = `
-            <span class="message-timestamp">${new Date().toLocaleTimeString()}</span>
-            <div class="message-content highlight-pen">${displayText}</div>
-        `;
-        box.prepend(bubble);
-        
-        // Keep only last 20 messages
-        while (box.children.length > 20) {
-            box.removeChild(box.lastChild);
-        }
-    } else {
-        // Update or add interim
-        let interim = box.querySelector('.message-bubble.interim');
-        if (!interim) {
-            interim = document.createElement('div');
-            interim.className = 'message-bubble interim';
-            box.prepend(interim);
-        }
-        interim.innerHTML = `
-            <span class="message-timestamp">Live...</span>
-            <div class="message-content">${displayText}</div>
-        `;
-    }
-});
+// NOTE: Transcript handler moved to unified handler below (line ~1134)
 
 let ttsEnabled = false;
 function speakText(text, lang) {
@@ -780,7 +741,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 });
-// Guide status handler
+// Guide status handler - unified handler at line ~1065
 socket.on('guide_status', (data) => {
     log("Guide Status Update: " + JSON.stringify(data));
     const statusEl = document.getElementById('tourist-status');
@@ -794,7 +755,9 @@ socket.on('guide_status', (data) => {
         if (role === 'tourist' && touristAudioActive) {
             log("Guide is broadcasting, requesting audio init and starting receiver...");
             socket.emit('request_audio_init');
-            startTouristReceiver(); // Try to connect immediately
+            if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+                startTouristReceiver();
+            }
         }
     } else if (data.online) {
         statusEl.textContent = "✅ Guide Online (Waiting to Start)";
@@ -1114,22 +1077,7 @@ socket.on('guide_ready', () => {
     }
 });
 
-socket.on('guide_status', (data) => {
-    log("Guide Status Received: " + (data.online ? "Online" : "Offline"));
-    if (!data.online) {
-        els.touristStatus.textContent = "Waiting for Guide to start...";
-    } else {
-        els.touristStatus.textContent = "Guide Found! Connecting...";
-        // CRITICAL FIX: Late joiners need to start receiver if guide is already online
-        if (role === 'tourist' && touristAudioActive) {
-            if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
-                log("Guide valid, starting connection...");
-                startTouristReceiver(); // This triggers WebRTC Offer
-            }
-        }
-    }
-});
-// Transcript Receiver - Works for both Guide and Tourist
+// NOTE: guide_status handler already defined above, this block removed to prevent duplicate
 // Transcript Receiver - Works for both Guide and Tourist
 socket.on('transcript', (data) => {
     const touristBox = document.getElementById('transcript-box');
@@ -1158,7 +1106,7 @@ socket.on('transcript', (data) => {
 
         bubble.innerHTML = `
             <span class="message-timestamp">${timestamp}</span>
-            <div class="message-content">${text}</div>
+            <div class="message-content highlight-pen">${text}</div>
         `;
 
         box.appendChild(bubble);
