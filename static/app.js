@@ -1116,6 +1116,17 @@ socket.on('guide_ready', () => {
 // NOTE: guide_status handler already defined above, this block removed to prevent duplicate
 // Transcript Receiver - Works for both Guide and Tourist
 socket.on('transcript', (data) => {
+    // IMPORTANT: If we receive transcript, guide MUST be online and broadcasting
+    // Update status display to ensure it's correct
+    if (role === 'tourist') {
+        const statusEl = document.getElementById('tourist-status');
+        if (statusEl && !statusEl.textContent.includes("Broadcasting")) {
+            statusEl.textContent = "Guide Broadcasting...";
+            statusEl.style.color = "#28a745";
+            log("[Android Debug] Auto-corrected guide status to Broadcasting (transcript received)");
+        }
+    }
+
     const touristBox = document.getElementById('transcript-box');
     const guideBox = document.getElementById('guide-transcript-box');
     const langSelect = document.getElementById('lang-select');
