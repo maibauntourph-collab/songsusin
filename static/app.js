@@ -384,18 +384,20 @@ window.startBroadcast = async function () {
             return;
         }
 
-        // HTTPS Check for Mobile
+        // HTTPS Check for Mobile (Log only, no alert)
         if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
             const msg = "⚠️ STT usually requires HTTPS on mobile. Text might not appear via HTTP IP.";
             log(msg);
-            alert(msg);
+            // alert(msg); // Removed - too noisy
         }
 
         // STT (Speech to Text) - Guide Side
         const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognitionAPI) {
-            alert("⚠️ Warning: This browser does not support AI Speech Recognition.\n\nGuide functionality requires Google Chrome (Android/PC).\niPhone (Safari) is NOT supported for STT.");
             log("STT Not Supported on this browser");
+            // Show in UI instead of alert
+            const sttStatus = document.getElementById('stt-status');
+            if (sttStatus) sttStatus.textContent = "⚠️ STT: Not Supported (Use Chrome)";
         } else {
             if (recognition) {
                 // Prevent multiple instances
