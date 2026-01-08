@@ -376,7 +376,8 @@ window.startBroadcast = async function () {
         }
 
         // STT (Speech to Text) - Guide Side
-        if (!('webkitSpeechRecognition' in window)) {
+        const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognitionAPI) {
             alert("⚠️ Warning: This browser does not support AI Speech Recognition.\n\nGuide functionality requires Google Chrome (Android/PC).\niPhone (Safari) is NOT supported for STT.");
             log("STT Not Supported on this browser");
         } else {
@@ -384,7 +385,8 @@ window.startBroadcast = async function () {
                 // Prevent multiple instances
                 try { recognition.stop(); } catch (e) { }
             }
-            recognition = new webkitSpeechRecognition();
+            log("Creating SpeechRecognition instance...");
+            recognition = new SpeechRecognitionAPI();
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'ko-KR'; // Guide speaks Korean
