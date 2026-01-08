@@ -780,6 +780,45 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 });
+// Guide status handler
+socket.on('guide_status', (data) => {
+    log("Guide Status Update: " + JSON.stringify(data));
+    const statusEl = document.getElementById('tourist-status');
+    if (!statusEl) return;
+
+    if (data.broadcasting) {
+        statusEl.textContent = "🎙️ Guide is Live (Broadcasting)";
+        statusEl.style.color = "#28a745";
+        statusEl.style.fontWeight = "bold";
+        
+        if (role === 'tourist' && touristAudioActive) {
+            log("Guide is broadcasting, requesting audio init and starting receiver...");
+            socket.emit('request_audio_init');
+            startTouristReceiver(); // Try to connect immediately
+        }
+    } else if (data.online) {
+        statusEl.textContent = "✅ Guide Online (Waiting to Start)";
+        statusEl.style.color = "#007bff";
+        statusEl.style.fontWeight = "normal";
+    } else {
+        statusEl.textContent = "❌ Guide Offline";
+        statusEl.style.color = "#dc3545";
+        statusEl.style.fontWeight = "normal";
+    }
+});
+
+socket.on('guide_ready', () => {
+    log("Guide Ready (WebRTC Track Active)");
+    const statusEl = document.getElementById('tourist-status');
+    if (statusEl) {
+        statusEl.textContent = "🎙️ Audio Receiving...";
+        statusEl.style.color = "#28a745";
+    }
+    if (role === 'tourist' && touristAudioActive) {
+        // startTouristReceiver(); // Handled by play button or auto-retry
+    }
+});
+
 socket.on('connect', () => {
     log("Socket.IO Connected");
     els.touristStatus.textContent = "Connected to Server";
@@ -845,6 +884,8 @@ window.selectRole = function (r) {
         initAudioContext();
         touristAudioActive = true;
         els.touristStatus.textContent = "Waiting for Guide...";
+        // Ensure we try to connect if guide is already live
+        socket.emit('request_guide_status');
     }
     socket.emit('join_room', { role: role, language: lang });
 }

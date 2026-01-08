@@ -85,16 +85,22 @@ async def join_room(sid, data):
     if role == 'guide':
         await sio_server.enter_room(sid, 'guides')
         guide_info['sid'] = sid
-        guide_info['started_at'] = datetime.now().isoformat()
+        # started_at should only be set when broadcast actually starts
     elif role == 'monitor':
         await sio_server.enter_room(sid, 'monitors')
     else:
         await sio_server.enter_room(sid, 'tourists')
-        # Notify new tourist about guide status (based on guide_info, not guide_track)
+        # Notify new tourist about guide status
         is_guide_online = (guide_info['sid'] is not None)
         is_broadcasting = guide_info.get('broadcasting', False)
         logger.info(f"Notifying {sid} of guide status: online={is_guide_online}, broadcasting={is_broadcasting}")
         await sio_server.emit('guide_status', {'online': is_guide_online, 'broadcasting': is_broadcasting}, room=sid)
+    
+    # BROADCAST STATUS TO ALL TOURISTS when ANYONE joins/changes
+    is_guide_online = (guide_info['sid'] is not None)
+    is_broadcasting = guide_info.get('broadcasting', False)
+    logger.info(f"Broadcast guide_status to all: online={is_guide_online}, broadcasting={is_broadcasting}")
+    await sio_server.emit('guide_status', {'online': is_guide_online, 'broadcasting': is_broadcasting}, room='tourists')
     
     # Broadcast updated user count to monitors
     await broadcast_monitor_update()
@@ -261,6 +267,13 @@ async def request_audio_init(sid):
     if audio_init_segment:
         logger.info(f"Sending init segment to {sid}")
         await sio_server.emit('audio_init', audio_init_segment, room=sid)
+
+@sio_server.event
+async def request_guide_status(sid):
+    is_guide_online = (guide_info['sid'] is not None)
+    is_broadcasting = guide_info.get('broadcasting', False)
+    logger.info(f"Manual status request from {sid}: online={is_guide_online}, broadcasting={is_broadcasting}")
+    await sio_server.emit('guide_status', {'online': is_guide_online, 'broadcasting': is_broadcasting}, room=sid)
 
 @sio_server.event
 async def request_reconnect(sid):
