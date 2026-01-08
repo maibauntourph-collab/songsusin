@@ -100,6 +100,7 @@ State management:
 - WebRTC failure automatically falls back to WebSocket audio streaming
 
 ## Documentation
+- `CHANGELOG_KR.md` - Progress/changelog in Korean
 - `GUIDE_SYSTEM_REPORT_KR.md` - Test report in Korean
 - `GUIDE_SYSTEM_REPORT_EN.md` - Test report in English
 - `ANDROID_DEBUG_REPORT_KR.md` - Android debugging report in Korean
