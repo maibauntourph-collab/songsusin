@@ -314,6 +314,7 @@ window.startBroadcast = async function () {
         isBroadcasting = true;
 
         socket.emit('reset_audio_session');
+        socket.emit('start_broadcast');
 
         // UI Updates
         els.guideStatus.textContent = "Initializing...";

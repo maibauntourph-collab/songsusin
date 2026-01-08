@@ -34,6 +34,8 @@ python server.py
 
 ## API Endpoints
 - `GET /` - Main application page
+- `GET /monitor` - Real-time monitoring dashboard
+- `GET /api/monitor` - Monitoring stats API (JSON)
 - `POST /add_place` - Add a new place
 - `POST /upload_places` - Upload places from Excel/CSV
 - `GET /places` - Get all registered places
@@ -45,13 +47,17 @@ python server.py
 - `POST /clear_session` - Clear all session transcripts
 
 ## Socket.IO Events
-- `join_room` - Join as guide or tourist
+- `join_room` - Join as guide, tourist, or monitor (includes language for tourists)
 - `offer/answer` - WebRTC signaling
 - `transcript_msg` - Speech-to-text messages
 - `audio_chunk` - Binary audio streaming (WebM/Opus)
 - `audio_init` - Audio initialization segment for late-joining tourists
 - `request_audio_init` - Request cached init segment from server
 - `reset_audio_session` - Reset audio state for new broadcast
+- `start_broadcast` - Guide starts broadcasting
+- `stop_broadcast` - Guide stops broadcasting
+- `update_language` - Tourist changes language preference
+- `monitor_update` - Server sends real-time stats to monitors
 
 ## Audio Streaming Architecture
 The system uses MediaSource Extensions (MSE) API for continuous audio streaming:
@@ -67,6 +73,10 @@ The system uses MediaSource Extensions (MSE) API for continuous audio streaming:
 - Simplified tourist audio: Auto-receives when guide broadcasts (no manual controls)
 - Added socket event guards to prevent stale data processing
 - WebRTC fallback to WebSocket audio without retry loops
+- **Monitoring Dashboard**: Real-time monitoring of guide and tourists at `/monitor`
+  - Guide online/broadcasting status
+  - Connected tourists count by language
+  - Individual tourist session tracking
 
 ## Audio Control
 - **Guide**: Has Start/Stop Broadcast buttons to control when audio is transmitted

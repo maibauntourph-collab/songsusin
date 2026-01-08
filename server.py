@@ -56,9 +56,12 @@ async def disconnect(sid):
         user = connected_users.pop(sid)
         logger.info(f"Removed {user['role']} from tracking")
         
-        # If guide disconnected, reset guide_info
+        # If guide disconnected, reset all guide state
         if user['role'] == 'guide':
+            guide_track = None
+            guide_pc = None
             guide_info = {'sid': None, 'broadcasting': False, 'started_at': None}
+            logger.info("Guide disconnected - cleared guide_track and guide_info")
             await sio_server.emit('guide_status', {'online': False}, room='tourists')
         
         # Broadcast updated user count to monitors
@@ -87,10 +90,11 @@ async def join_room(sid, data):
         await sio_server.enter_room(sid, 'monitors')
     else:
         await sio_server.enter_room(sid, 'tourists')
-        # Notify new tourist about guide status
-        is_guide_online = (guide_track is not None)
-        logger.info(f"Notifying {sid} of guide status: {is_guide_online}")
-        await sio_server.emit('guide_status', {'online': is_guide_online}, room=sid)
+        # Notify new tourist about guide status (based on guide_info, not guide_track)
+        is_guide_online = (guide_info['sid'] is not None)
+        is_broadcasting = guide_info.get('broadcasting', False)
+        logger.info(f"Notifying {sid} of guide status: online={is_guide_online}, broadcasting={is_broadcasting}")
+        await sio_server.emit('guide_status', {'online': is_guide_online, 'broadcasting': is_broadcasting}, room=sid)
     
     # Broadcast updated user count to monitors
     await broadcast_monitor_update()
@@ -235,9 +239,20 @@ async def reset_audio_session(sid):
 
 @sio_server.event
 async def stop_broadcast(sid):
-    global guide_info
+    global guide_info, guide_track
     guide_info['broadcasting'] = False
+    guide_track = None
     logger.info("Guide stopped broadcasting")
+    await sio_server.emit('guide_status', {'online': True, 'broadcasting': False}, room='tourists')
+    await broadcast_monitor_update()
+
+@sio_server.event
+async def start_broadcast(sid):
+    global guide_info
+    guide_info['broadcasting'] = True
+    guide_info['started_at'] = datetime.now().isoformat()
+    logger.info("Guide started broadcasting")
+    await sio_server.emit('guide_status', {'online': True, 'broadcasting': True}, room='tourists')
     await broadcast_monitor_update()
 
 @sio_server.event
