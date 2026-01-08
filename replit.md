@@ -104,3 +104,5 @@ State management:
 - `GUIDE_SYSTEM_REPORT_EN.md` - Test report in English
 - `ANDROID_DEBUG_REPORT_KR.md` - Android debugging report in Korean
 - `ANDROID_DEBUG_REPORT_EN.md` - Android debugging report in English
+- `BUSINESS_MODEL_KR.md` - Business model summary in Korean (Patent application)
+- `BUSINESS_MODEL_EN.md` - Business model summary in English (Patent application)
