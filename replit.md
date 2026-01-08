@@ -85,6 +85,10 @@ The system uses MediaSource Extensions (MSE) API for continuous audio streaming:
 - **Removed alert sounds**: Disabled audio detection alerts during guide transmission
 - **Added TTS support**: Tourists can enable voice reading of translated text
 - **Created test reports**: `GUIDE_SYSTEM_REPORT_KR.md` and `GUIDE_SYSTEM_REPORT_EN.md`
+- **Android STT Fix**: Delayed STT start on Android to prevent microphone conflict
+- **STT Status Indicator**: Added UI element showing STT operation status
+- **Auto Guide Status Sync**: Tourist UI automatically updates to "Broadcasting" when receiving transcript
+- **Removed STT Alerts**: Replaced noisy alert dialogs with quiet log/UI messages
 
 ## Audio Control
 - **Guide**: Has Start/Stop Broadcast buttons to control when audio is transmitted
@@ -98,3 +102,5 @@ State management:
 ## Documentation
 - `GUIDE_SYSTEM_REPORT_KR.md` - Test report in Korean
 - `GUIDE_SYSTEM_REPORT_EN.md` - Test report in English
+- `ANDROID_DEBUG_REPORT_KR.md` - Android debugging report in Korean
+- `ANDROID_DEBUG_REPORT_EN.md` - Android debugging report in English
