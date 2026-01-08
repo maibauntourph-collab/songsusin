@@ -394,15 +394,15 @@ window.startBroadcast = async function () {
             // STT Engine Setup
             recognition.onstart = () => {
                 log("STT Engine: Started");
-                updateGuideTranscriptUI("🎤 Listening...", false);
+                // updateGuideTranscriptUI("🎤 Listening...", false);
             };
-            recognition.onaudiostart = () => log("STT Engine: Audio Detected");
-            recognition.onspeechstart = () => log("STT Engine: Speech Detected");
+            // recognition.onaudiostart = () => log("STT Engine: Audio Detected");
+            // recognition.onspeechstart = () => log("STT Engine: Speech Detected");
             recognition.onnomatch = () => log("STT Engine: No Match");
             recognition.onerror = (e) => {
                 log("STT Error: " + e.error);
                 if (e.error === 'not-allowed') {
-                    alert("STT Permission Denied. Check settings.");
+                    // alert("STT Permission Denied. Check settings.");
                     els.guideStatus.textContent = "Error: STT Blocked";
                     els.guideStatus.classList.add('status-error');
                 } else if (e.error === 'network') {
@@ -689,6 +689,96 @@ function createPeerConnection() {
 } // End createPeerConnection
 
 // --- Signaling ---
+socket.on('transcript', (data) => {
+    log("Received Transcript: " + data.original);
+    
+    const box = document.getElementById('transcript-box');
+    if (!box) return;
+
+    // Get selected language
+    const langSel = document.getElementById('lang-select');
+    const targetLang = langSel ? langSel.value : 'original';
+    
+    let displayText = data.original;
+    if (targetLang !== 'original' && data.translations && data.translations[targetLang]) {
+        displayText = data.translations[targetLang];
+    }
+
+    // TTS if enabled and final
+    if (data.isFinal && ttsEnabled && role === 'tourist') {
+        speakText(displayText, targetLang);
+    }
+
+    // Update UI
+    // If we have an existing interim message for this sid/index, update it?
+    // For simplicity, we'll append new bubbles or replace interim ones.
+    
+    if (data.isFinal) {
+        // Clear interim messages and add final
+        const interim = box.querySelector('.message-bubble.interim');
+        if (interim) interim.remove();
+        
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble final';
+        bubble.innerHTML = `
+            <span class="message-timestamp">${new Date().toLocaleTimeString()}</span>
+            <div class="message-content">${displayText}</div>
+        `;
+        box.prepend(bubble);
+        
+        // Keep only last 20 messages
+        while (box.children.length > 20) {
+            box.removeChild(box.lastChild);
+        }
+    } else {
+        // Update or add interim
+        let interim = box.querySelector('.message-bubble.interim');
+        if (!interim) {
+            interim = document.createElement('div');
+            interim.className = 'message-bubble interim';
+            box.prepend(interim);
+        }
+        interim.innerHTML = `
+            <span class="message-timestamp">Live...</span>
+            <div class="message-content">${displayText}</div>
+        `;
+    }
+});
+
+let ttsEnabled = false;
+function speakText(text, lang) {
+    if (!('speechSynthesis' in window)) return;
+    
+    // Stop any current speech
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang === 'original' ? 'ko-KR' : lang;
+    
+    // Adjust language code for Google TTS if needed
+    if (utterance.lang === 'en') utterance.lang = 'en-US';
+    if (utterance.lang === 'ja') utterance.lang = 'ja-JP';
+    if (utterance.lang === 'zh-CN') utterance.lang = 'zh-CN';
+    
+    window.speechSynthesis.speak(utterance);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const ttsBtn = document.getElementById('tts-btn');
+    if (ttsBtn) {
+        ttsBtn.onclick = () => {
+            ttsEnabled = !ttsEnabled;
+            ttsBtn.textContent = "Sound: " + (ttsEnabled ? "ON" : "OFF");
+            ttsBtn.style.background = ttsEnabled ? "#28a745" : "#444";
+            if (ttsEnabled) {
+                // Resume AudioContext as well
+                resumeAudioContext();
+                // Test speech
+                speakText("TTS Enabled", "en");
+            }
+        };
+    }
+});
 socket.on('connect', () => {
     log("Socket.IO Connected");
     els.touristStatus.textContent = "Connected to Server";
