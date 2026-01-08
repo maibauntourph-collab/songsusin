@@ -262,6 +262,19 @@
             <h3>🛠️ Guide Admin (Register Info)</h3>
             <h3>🛠️ Guide Admin (Register Info)</h3>
 
+            <!-- Offline Mode Toggle -->
+            <div id="offline-mode-panel"
+                style="background: #1a3a1a; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #28a745;">
+                <h4 style="margin-top:0; color: #28a745;">📡 Offline/Local Mode</h4>
+                <label style="color: #fff; display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="offline-mode-toggle" onchange="toggleOfflineMode(this)">
+                    <span id="offline-mode-label">Enable Offline Mode (Audio Only, No STT)</span>
+                </label>
+                <div style="color: #aaa; font-size: 0.8rem; margin-top: 5px;">
+                    Use when there's no internet connection. Audio will stream directly without speech-to-text or translation.
+                </div>
+            </div>
+
             <!-- Transmission Mode Toggle -->
             <div
                 style="background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #444;">

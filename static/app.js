@@ -11,6 +11,49 @@ let recognition = null;
 // Tourist audio is always active once role is selected
 let touristAudioActive = false;
 
+// Offline Mode: For local/intranet environments without internet
+// In offline mode, STT/translation is disabled, only audio streaming works
+let offlineMode = false;
+
+function detectOfflineMode() {
+    // Check if we're in an offline/local environment
+    const isLocalIP = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|localhost|127\.0\.0\.1)/.test(location.hostname);
+    const isOffline = !navigator.onLine;
+    
+    if (isOffline || (isLocalIP && !navigator.onLine)) {
+        offlineMode = true;
+        log("[Offline Mode] Detected offline/local environment - STT disabled, audio-only mode");
+        return true;
+    }
+    return false;
+}
+
+// Listen for online/offline changes
+window.addEventListener('online', () => {
+    log("[Network] Back online");
+    offlineMode = false;
+    updateOfflineModeUI();
+});
+
+window.addEventListener('offline', () => {
+    log("[Network] Gone offline");
+    offlineMode = true;
+    updateOfflineModeUI();
+});
+
+function updateOfflineModeUI() {
+    const sttStatus = document.getElementById('stt-status');
+    const offlineIndicator = document.getElementById('offline-indicator');
+    
+    if (offlineMode) {
+        if (sttStatus) sttStatus.textContent = "⚠️ Offline Mode (Audio Only)";
+        if (offlineIndicator) offlineIndicator.classList.remove('hidden');
+    } else {
+        if (sttStatus) sttStatus.textContent = "";
+        if (offlineIndicator) offlineIndicator.classList.add('hidden');
+    }
+}
+
 // Audio Visualizer Logic
 function setupAudioAnalysis(stream, meterId) {
     try {
@@ -259,6 +302,27 @@ window.toggleTransmissionMode = function (cb) {
     log("Transmission Mode changed to: " + (useWebRTC ? "Auto" : "Manual"));
 }
 
+window.toggleOfflineMode = function (cb) {
+    offlineMode = cb.checked;
+    const label = document.getElementById('offline-mode-label');
+    const panel = document.getElementById('offline-mode-panel');
+    const sttStatus = document.getElementById('stt-status');
+    
+    if (offlineMode) {
+        if (label) label.textContent = "Offline Mode ENABLED (Audio Only)";
+        if (panel) panel.style.background = "#2a1a1a";
+        if (panel) panel.style.borderColor = "#dc3545";
+        if (sttStatus) sttStatus.textContent = "📡 Offline Mode: Audio streaming only (No STT/Translation)";
+        log("[Offline Mode] ENABLED - STT and translation disabled");
+    } else {
+        if (label) label.textContent = "Enable Offline Mode (Audio Only, No STT)";
+        if (panel) panel.style.background = "#1a3a1a";
+        if (panel) panel.style.borderColor = "#28a745";
+        if (sttStatus) sttStatus.textContent = "🎤 STT: Waiting to start...";
+        log("[Offline Mode] DISABLED - STT and translation enabled");
+    }
+}
+
 window.checkNetworkMode = function () {
     const el = document.getElementById('network-mode');
     if (!el) return;
@@ -391,9 +455,18 @@ window.startBroadcast = async function () {
             // alert(msg); // Removed - too noisy
         }
 
+        // Check offline mode before STT
+        detectOfflineMode();
+        
         // STT (Speech to Text) - Guide Side
+        // Skip STT in offline mode (Google services required)
         const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognitionAPI) {
+        if (offlineMode) {
+            log("[Offline Mode] STT disabled - audio only streaming");
+            const sttStatus = document.getElementById('stt-status');
+            if (sttStatus) sttStatus.textContent = "📡 Offline Mode: Audio Only (No STT)";
+            updateGuideTranscriptUI("📡 Offline Mode - Audio streaming without transcription", false);
+        } else if (!SpeechRecognitionAPI) {
             log("STT Not Supported on this browser");
             // Show in UI instead of alert
             const sttStatus = document.getElementById('stt-status');
@@ -524,6 +597,20 @@ window.startBroadcast = async function () {
         // Setup Visualizer for Guide
         setupAudioAnalysis(localStream, 'guide-meter');
 
+        // Android STT Fix: On Android, skip MediaRecorder to avoid microphone conflict
+        // MediaRecorder monopolizes the mic on Android Chrome, blocking STT
+        // Exception: In offline mode, we WANT MediaRecorder since STT is disabled
+        const isAndroidDevice = /Android/i.test(navigator.userAgent);
+        const sttEnabled = !!SpeechRecognitionAPI && !offlineMode;
+        const skipRecorderForSTT = isAndroidDevice && sttEnabled;
+        
+        if (offlineMode) {
+            log("[Offline Mode] Using MediaRecorder for audio streaming (STT disabled)");
+        } else if (skipRecorderForSTT) {
+            log("[Android STT Fix] Skipping MediaRecorder to allow STT to work");
+            log("[Android STT Fix] Audio will be sent via WebRTC only");
+        }
+
         if (useWebRTC) {
             els.guideStatus.textContent = "Broadcasting (WebRTC)...";
             createPeerConnection();
@@ -536,11 +623,22 @@ window.startBroadcast = async function () {
             await waitForICEGathering(pc);
             socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
             
-            // ALWAYS start WebSocket fallback for Android compatibility
-            setupFallbackRecorder(localStream);
+            // On Android with STT: Skip MediaRecorder to avoid mic conflict
+            // On other platforms: Use dual mode (WebRTC + WebSocket fallback)
+            if (!skipRecorderForSTT) {
+                setupFallbackRecorder(localStream);
+            } else {
+                els.guideStatus.textContent = "Broadcasting (WebRTC + STT)";
+            }
         } else {
+            // WebSocket-only mode (non-WebRTC browsers)
             els.guideStatus.textContent = "Broadcasting (WebSocket)...";
-            setupFallbackRecorder(localStream);
+            if (!skipRecorderForSTT) {
+                setupFallbackRecorder(localStream);
+            } else {
+                log("[Android STT Fix] WARNING: No audio transmission without WebRTC!");
+                els.guideStatus.textContent = "STT Only (No Audio Stream)";
+            }
         }
     } catch (err) {
         log("Error starting broadcast: " + err);
