@@ -32,6 +32,10 @@ relay = MediaRelay()
 guide_track = None
 guide_pc = None
 
+# Connected Users Tracking
+connected_users = {}  # {sid: {'role': 'guide/tourist', 'language': 'en', 'connected_at': datetime, 'status': 'active'}}
+guide_info = {'sid': None, 'broadcasting': False, 'started_at': None}
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     with open("static/index.html", encoding="utf-8") as f:
@@ -44,23 +48,87 @@ async def connect(sid, environ):
 
 @sio_server.event
 async def disconnect(sid):
-    global guide_track, guide_pc
+    global guide_track, guide_pc, guide_info
     logger.info(f"Client disconnected: {sid}")
-    # Cleanup logic would go here. 
-    # If it was the guide, we might want to notify tourists, but for now we keep it simple.
+    
+    # Remove from connected users
+    if sid in connected_users:
+        user = connected_users.pop(sid)
+        logger.info(f"Removed {user['role']} from tracking")
+        
+        # If guide disconnected, reset guide_info
+        if user['role'] == 'guide':
+            guide_info = {'sid': None, 'broadcasting': False, 'started_at': None}
+            await sio_server.emit('guide_status', {'online': False}, room='tourists')
+        
+        # Broadcast updated user count to monitors
+        await broadcast_monitor_update()
 
 @sio_server.event
 async def join_room(sid, data):
+    global guide_info
     role = data.get('role')
-    logger.info(f"Client {sid} joined as {role}")
+    language = data.get('language', 'en')
+    logger.info(f"Client {sid} joined as {role} with language {language}")
+    
+    # Track user
+    connected_users[sid] = {
+        'role': role,
+        'language': language,
+        'connected_at': datetime.now().isoformat(),
+        'status': 'active'
+    }
+    
     if role == 'guide':
         await sio_server.enter_room(sid, 'guides')
+        guide_info['sid'] = sid
+        guide_info['started_at'] = datetime.now().isoformat()
+    elif role == 'monitor':
+        await sio_server.enter_room(sid, 'monitors')
     else:
         await sio_server.enter_room(sid, 'tourists')
         # Notify new tourist about guide status
         is_guide_online = (guide_track is not None)
         logger.info(f"Notifying {sid} of guide status: {is_guide_online}")
         await sio_server.emit('guide_status', {'online': is_guide_online}, room=sid)
+    
+    # Broadcast updated user count to monitors
+    await broadcast_monitor_update()
+
+@sio_server.event
+async def update_language(sid, data):
+    """Update tourist's selected language"""
+    language = data.get('language', 'en')
+    if sid in connected_users:
+        connected_users[sid]['language'] = language
+        logger.info(f"Client {sid} changed language to {language}")
+        await broadcast_monitor_update()
+
+async def broadcast_monitor_update():
+    """Send real-time updates to all monitor clients"""
+    stats = get_connection_stats()
+    await sio_server.emit('monitor_update', stats, room='monitors')
+
+def get_connection_stats():
+    """Get current connection statistics"""
+    tourists = {sid: info for sid, info in connected_users.items() if info['role'] == 'tourist'}
+    guides = {sid: info for sid, info in connected_users.items() if info['role'] == 'guide'}
+    
+    # Count by language
+    lang_counts = {}
+    for sid, info in tourists.items():
+        lang = info.get('language', 'en')
+        lang_counts[lang] = lang_counts.get(lang, 0) + 1
+    
+    return {
+        'guide_online': len(guides) > 0,
+        'guide_broadcasting': guide_info.get('broadcasting', False),
+        'guide_started_at': guide_info.get('started_at'),
+        'total_tourists': len(tourists),
+        'tourists_by_language': lang_counts,
+        'tourist_list': [{'sid': sid[:8], 'language': info['language'], 'connected_at': info['connected_at']} for sid, info in tourists.items()],
+        'timestamp': datetime.now().isoformat()
+    }
 
 @sio_server.event
 async def offer(sid, data):
@@ -157,11 +225,20 @@ async def binary_audio(sid, data):
 
 @sio_server.event
 async def reset_audio_session(sid):
-    global audio_chunks_count, audio_init_segment, audio_session_active
+    global audio_chunks_count, audio_init_segment, audio_session_active, guide_info
     audio_chunks_count = 0
     audio_init_segment = None
     audio_session_active = False
-    logger.info("Audio session reset")
+    guide_info['broadcasting'] = True
+    logger.info("Audio session reset - Guide started broadcasting")
+    await broadcast_monitor_update()
+
+@sio_server.event
+async def stop_broadcast(sid):
+    global guide_info
+    guide_info['broadcasting'] = False
+    logger.info("Guide stopped broadcasting")
+    await broadcast_monitor_update()
 
 @sio_server.event
 async def request_audio_init(sid):
@@ -545,6 +622,17 @@ async def get_recordings():
     # Sort by time (newest first)
     files.sort(key=lambda x: os.path.getmtime(os.path.join("recordings", x)), reverse=True)
     return {"files": files}
+
+@app.get("/api/monitor")
+async def get_monitor_stats():
+    """API endpoint for monitoring dashboard"""
+    return get_connection_stats()
+
+@app.get("/monitor", response_class=HTMLResponse)
+async def monitor_page(request: Request):
+    """Monitoring dashboard page"""
+    with open("static/monitor.html", encoding="utf-8") as f:
+        return f.read()
 
 # Ensure recordings directory exists before mounting
 os.makedirs("recordings", exist_ok=True)

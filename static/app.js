@@ -506,6 +506,9 @@ window.stopBroadcast = function () {
     log("Stop Broadcast clicked");
     isBroadcasting = false;
 
+    // Notify server that broadcast stopped
+    socket.emit('stop_broadcast');
+
     // Update Buttons
     const toggleBtn = document.getElementById('broadcast-toggle-btn');
     const toolbarBtn = document.getElementById('toolbar-run-btn');
@@ -702,9 +705,10 @@ socket.on('connect', () => {
     els.guideStatus.style.color = ""; // Reset color
     document.body.style.borderTop = "5px solid #28a745"; // Visual connection indicator
     if (role) {
-
         // Re-join if we were already there (Reconnect logic)
-        socket.emit('join_room', { role: role });
+        const langSel = document.getElementById('lang-select');
+        const lang = langSel ? langSel.value : 'en';
+        socket.emit('join_room', { role: role, language: lang });
     }
 });
 
@@ -748,6 +752,11 @@ window.selectRole = function (r) {
     log("Role selected: " + r);
     role = r;
     els.roleSel.classList.add('hidden');
+    
+    // Get selected language for tourists
+    const langSel = document.getElementById('lang-select');
+    const lang = langSel ? langSel.value : 'en';
+    
     if (role === 'guide') {
         els.guideCtrl.classList.remove('hidden');
     } else {
@@ -755,14 +764,15 @@ window.selectRole = function (r) {
         initAudioContext();
         touristAudioActive = true;
         els.touristStatus.textContent = "Waiting for Guide...";
-
-        // Check if guide is already online? 
-        // The server sends 'guide_status' on join_room, so the handler above will catch it.
-        // But we need to ensure we don't block it.
-        // Force a check?
-        // Server emits 'guide_status' immediately after join_room.
     }
-    socket.emit('join_room', { role: role });
+    socket.emit('join_room', { role: role, language: lang });
+}
+
+// Handle language change for tourists
+window.onLanguageChange = function(selectEl) {
+    const lang = selectEl.value;
+    log("Language changed to: " + lang);
+    socket.emit('update_language', { language: lang });
 }
 
 // Full teardown of all tourist audio resources
