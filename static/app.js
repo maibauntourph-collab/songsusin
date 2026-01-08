@@ -557,18 +557,31 @@ function getSupportedMimeType() {
     const types = [
         'audio/webm;codecs=opus',
         'audio/webm',
+        'audio/ogg;codecs=opus',
         'audio/ogg',
-        'audio/mp4', // iOS support
-        'audio/aac'
+        'audio/mp4',
+        'audio/mp4;codecs=mp4a.40.2',
+        'audio/mpeg',
+        'audio/aac',
+        'audio/3gpp',
+        'audio/3gpp2',
+        ''
     ];
+    
+    log("Checking supported MIME types on this device...");
+    const supported = [];
     for (const type of types) {
-        if (MediaRecorder.isTypeSupported(type)) {
-            log("Selected MediaRecorder MIME: " + type);
-            return type;
+        if (type === '' || MediaRecorder.isTypeSupported(type)) {
+            if (type !== '') supported.push(type);
+            if (type !== '') {
+                log("Selected MediaRecorder MIME: " + type);
+                return type;
+            }
         }
     }
-    log("Warning: No standard MIME type supported for MediaRecorder");
-    return ''; // Let browser decide default
+    log("Supported MIME types: " + (supported.length > 0 ? supported.join(', ') : 'none detected'));
+    log("Warning: No standard MIME type supported for MediaRecorder, using browser default");
+    return '';
 }
 
 function setupFallbackRecorder(stream) {
@@ -581,9 +594,14 @@ function setupFallbackRecorder(stream) {
     } else {
         log("No MIME specified, using browser default");
     }
+    
+    // Add audioBitsPerSecond for better Android compatibility
+    options.audioBitsPerSecond = 128000;
 
     try {
+        log("Creating MediaRecorder with options: " + JSON.stringify(options));
         const recorder = new MediaRecorder(stream, options);
+        log("MediaRecorder created successfully. Actual mimeType: " + recorder.mimeType);
 
         recorder.ondataavailable = e => {
             if (e.data.size > 0) {
