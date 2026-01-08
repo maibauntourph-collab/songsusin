@@ -312,10 +312,16 @@ def translate_sync(text, target):
 # Transcript/Translation Handler
 @sio_server.event
 async def transcript_msg(sid, data):
+    logger.info(f"[TRANSCRIPT] RAW data received from {sid}: {data}")
+    
     text = data.get('text', '')
     is_final = data.get('isFinal', True) 
     
-    logger.info(f"[TRANSCRIPT] Received from {sid}: text='{text[:50]}...', isFinal={is_final}")
+    # Validate and clean text
+    if text:
+        text = str(text).strip()
+    
+    logger.info(f"[TRANSCRIPT] Processed: text='{text[:50] if text else 'EMPTY'}...', isFinal={is_final}, text_len={len(text) if text else 0}")
     
     if not text:
         logger.warning(f"[TRANSCRIPT] Empty text received from {sid}, ignoring")

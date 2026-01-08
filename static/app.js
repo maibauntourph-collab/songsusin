@@ -1116,6 +1116,8 @@ socket.on('guide_ready', () => {
 // NOTE: guide_status handler already defined above, this block removed to prevent duplicate
 // Transcript Receiver - Works for both Guide and Tourist
 socket.on('transcript', (data) => {
+    log("[Android Debug] Transcript received: " + JSON.stringify(data).substring(0, 200));
+    
     // IMPORTANT: If we receive transcript, guide MUST be online and broadcasting
     // Update status display to ensure it's correct
     if (role === 'tourist') {
