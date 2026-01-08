@@ -410,7 +410,10 @@ window.startBroadcast = async function () {
             // STT Engine Setup
             recognition.onstart = () => {
                 log("STT Engine: Started");
-                // updateGuideTranscriptUI("🎤 Listening...", false);
+                // Show STT status on UI
+                const sttStatus = document.getElementById('stt-status');
+                if (sttStatus) sttStatus.textContent = "🎤 STT: Active";
+                updateGuideTranscriptUI("🎤 Listening for speech...", false);
             };
             // recognition.onaudiostart = () => log("STT Engine: Audio Detected");
             // recognition.onspeechstart = () => log("STT Engine: Speech Detected");
@@ -493,12 +496,26 @@ window.startBroadcast = async function () {
                     updateGuideTranscriptUI(interim, false);
                 }
             };
-            try {
-                recognition.start();
-                log("STT Init Command Sent");
-            } catch (e) {
-                log("STT Start Error: " + e);
-            }
+            // On Android, add delay before starting STT to avoid microphone conflict
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            const sttStartDelay = isAndroid ? 1000 : 100;
+            log("[Android Debug] Will start STT in " + sttStartDelay + "ms, isAndroid=" + isAndroid);
+            
+            setTimeout(() => {
+                try {
+                    recognition.start();
+                    log("STT Init Command Sent");
+                } catch (e) {
+                    log("STT Start Error: " + e);
+                    // On Android, retry with longer delay
+                    if (isAndroid) {
+                        setTimeout(() => {
+                            try { recognition.start(); log("STT Retry Success"); } 
+                            catch (e2) { log("STT Retry Fail: " + e2); }
+                        }, 2000);
+                    }
+                }
+            }, sttStartDelay);
         }
 
         // --- Audio Transmission ---
