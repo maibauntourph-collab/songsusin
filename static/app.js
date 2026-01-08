@@ -263,6 +263,35 @@ window.checkNetworkMode = function () {
 // Init check
 document.addEventListener('DOMContentLoaded', () => {
     checkNetworkMode();
+
+    // Auto-role selection for testing/simulation
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoRole = urlParams.get('auto_role');
+    if (autoRole) {
+        log("Auto-selecting role: " + autoRole);
+        selectRole(autoRole);
+    }
+
+    // Auto-language selection
+    const autoLang = urlParams.get('lang');
+    if (autoLang) {
+        const langSel = document.getElementById('lang-select');
+        if (langSel) {
+            langSel.value = autoLang;
+            log("Auto-selected Language: " + autoLang);
+        }
+    }
+
+    // Auto-sound (TTS) enable
+    const autoSound = urlParams.get('sound');
+    if (autoSound === 'on') {
+        const tBtn = document.getElementById('tts-btn');
+        // Check if exists and is currently OFF
+        if (tBtn && tBtn.textContent.includes("OFF")) {
+            log("Auto-enabling TTS Sound");
+            tBtn.click(); // Trigger toggle logic
+        }
+    }
 });
 
 window.startBroadcast = async function () {
@@ -726,7 +755,12 @@ window.selectRole = function (r) {
         initAudioContext();
         touristAudioActive = true;
         els.touristStatus.textContent = "Waiting for Guide...";
-        // Don't auto-start WebRTC - wait for guide_ready or audio_chunk
+
+        // Check if guide is already online? 
+        // The server sends 'guide_status' on join_room, so the handler above will catch it.
+        // But we need to ensure we don't block it.
+        // Force a check?
+        // Server emits 'guide_status' immediately after join_room.
     }
     socket.emit('join_room', { role: role });
 }
@@ -954,6 +988,13 @@ socket.on('guide_status', (data) => {
         els.touristStatus.textContent = "Waiting for Guide to start...";
     } else {
         els.touristStatus.textContent = "Guide Found! Connecting...";
+        // CRITICAL FIX: Late joiners need to start receiver if guide is already online
+        if (role === 'tourist' && touristAudioActive) {
+            if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+                log("Guide valid, starting connection...");
+                startTouristReceiver(); // This triggers WebRTC Offer
+            }
+        }
     }
 });
 // Transcript Receiver - Works for both Guide and Tourist
@@ -971,47 +1012,24 @@ socket.on('transcript', (data) => {
         displayText = data.translations[langInfo];
     }
 
-    // Function to update a box with "All History + Highlight Current" logic
+    // Function to update a box with "Message Bubble" logic
     const updateBox = (box, text, isFinal) => {
-        // We want to keep previous content (history) and append the new part.
-        // But for 'interim' results (isFinal=false), we usually replace the *last* temporary segment.
-        // Simplified approach: 
-        // 1. If we have a temporary segment (id='temp-seg'), remove it.
-        // 2. Append new segment.
-        // 3. If isFinal, give it 'history-text' class (after a brief highlight?). 
-        //    Actually user wants "Current explained part" highlighted.
-        //    So Final text is "History" (dimmed), and the NEWest text is highlighted?
-        //    OR: The user wants to see the full text, and the part currently being spoken is highlighted.
-        //    Since we build text iteratively:
-        //    - committed text -> history (dimmed)
-        //    - current speaking -> highlight
-
         // Remove old temp segment if exists
         const oldTemp = box.querySelector('#temp-seg');
         if (oldTemp) oldTemp.remove();
 
-        const newSeg = document.createElement('span');
-        newSeg.id = isFinal ? '' : 'temp-seg'; // Final segments lose the temp ID so they stay
-        newSeg.innerHTML = text + " ";
+        const bubble = document.createElement('div');
+        bubble.className = isFinal ? 'message-bubble final' : 'message-bubble interim';
+        if (!isFinal) bubble.id = 'temp-seg';
 
-        if (isFinal) {
-            // committed text
-            newSeg.className = 'history-text';
-            // Optional: flash highlight then fade?
-            // For now, let's keep it simple: new committed text is just added.
-            // Wait, "Current explained part" usually means the *active* speech.
-            // If isFinal is true, it's done. 
-            // Maybe we highlight the *latest* final segment for a few seconds?
-            newSeg.className = 'highlight-pen';
-            setTimeout(() => {
-                newSeg.className = 'history-text';
-            }, 3000); // Highlight for 3 seconds then dim
-        } else {
-            // Interim (speaking now)
-            newSeg.className = 'highlight-pen';
-        }
+        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-        box.appendChild(newSeg);
+        bubble.innerHTML = `
+            <span class="message-timestamp">${timestamp}</span>
+            <div class="message-content">${text}</div>
+        `;
+
+        box.appendChild(bubble);
         box.scrollTop = box.scrollHeight;
     };
 

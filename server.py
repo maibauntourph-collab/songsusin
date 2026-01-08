@@ -194,7 +194,8 @@ import concurrent.futures
 import functools
 
 # Executor for sync tasks (Translation)
-executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+# Increased workers to handle 100 concurrent translations comfortably
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=50)
 
 def translate_sync(text, target):
     try:
@@ -219,7 +220,20 @@ async def transcript_msg(sid, data):
     }
 
     if is_final:
-        targets = ['en', 'ko', 'ja', 'zh-CN']
+        # Full list of supported languages (approx 100+)
+        targets = [
+            'af', 'sq', 'am', 'ar', 'hy', 'az', 'eu', 'be', 'bn', 'bs', 
+            'bg', 'ca', 'ceb', 'ny', 'zh-CN', 'zh-TW', 'co', 'hr', 'cs', 'da', 
+            'nl', 'en', 'eo', 'et', 'tl', 'fi', 'fr', 'fy', 'gl', 'ka', 
+            'de', 'el', 'gu', 'ht', 'ha', 'haw', 'iw', 'hi', 'hmn', 'hu', 
+            'is', 'ig', 'id', 'ga', 'it', 'ja', 'jw', 'kn', 'kk', 'km', 
+            'ko', 'ku', 'ky', 'lo', 'la', 'lv', 'lt', 'lb', 'mk', 'mg', 
+            'ms', 'ml', 'mt', 'mi', 'mr', 'mn', 'my', 'ne', 'no', 'ps', 
+            'fa', 'pl', 'pt', 'pa', 'ro', 'ru', 'sm', 'gd', 'sr', 'st', 
+            'sn', 'sd', 'si', 'sk', 'sl', 'so', 'es', 'su', 'sw', 'sv', 
+            'tg', 'ta', 'te', 'th', 'tr', 'uk', 'ur', 'uz', 'vi', 'cy', 
+            'xh', 'yi', 'yo', 'zu'
+        ]
         loop = asyncio.get_event_loop()
         
         tasks = []
@@ -554,4 +568,8 @@ async def restart_server():
 
 if __name__ == "__main__":
     import uvicorn
+    print("\n" + "="*60)
+    print("🚀 Mobile Guide Server Running on Port 5000")
+    print("📊 Load Test Simulation: http://0.0.0.0:5000/static/simulation.html")
+    print("="*60 + "\n")
     uvicorn.run(sio_app, host="0.0.0.0", port=5000)

@@ -120,6 +120,70 @@
         #transcript-box,
         #guide-transcript-box {
             scroll-behavior: smooth;
+            background: #f8f9fa;
+            /* Light background for readability */
+            border: 1px solid #dee2e6;
+            border-radius: 12px;
+            padding: 15px;
+            height: 300px;
+            /* Fixed height for scrolling */
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .message-bubble {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 12px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            max-width: 90%;
+            align-self: flex-start;
+            text-align: left;
+            position: relative;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-bubble.final {
+            border-left: 4px solid #28a745;
+        }
+
+        .message-bubble.interim {
+            border-left: 4px solid #ffc107;
+            background: #fffbef;
+        }
+
+        .message-timestamp {
+            font-size: 0.7rem;
+            color: #999;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        .message-content {
+            font-size: 1rem;
+            color: #333;
+            line-height: 1.4;
+        }
+
+        /* Dark mode overrides for guide box if needed, or unify */
+        #guide-transcript-box {
+            background: #222;
+            color: #ccff00;
         }
     </style>
 </head>
@@ -175,8 +239,8 @@
         <!-- Guide Meter --><span class="meter-label">Microphone Level:</span>
         <div class="meter-container">
             <div class="meter-fill" id="guide-meter"></div>
-        </div><button class="btn-guide" onclick="startBroadcast()">Start Broadcast</button><button
-            class="btn-stop hidden" onclick="stopBroadcast()">Stop</button>
+        </div>
+        <button id="broadcast-toggle-btn" class="btn-guide" onclick="toggleBroadcast()">▶️ Start Broadcast</button>
         <!-- Guide Transcript Feedback -->
         <div id="guide-transcript-box" style="
  background: #222;
@@ -270,32 +334,133 @@
         <div class="status" id="tourist-status">Waiting for Guide...</div>
         <div class="data-counter" id="tourist-counter">RX: 0 KB</div>
         <!-- Karaoke / STT Box -->
-        <div id="transcript-box" style="
- background: #000;
-        color: #ccff00;
-        font-family: 'Courier New',
-        monospace;
-        font-size: 1.2rem;
-        padding: 15px;
-        margin-top: 20px;
-        border: 2px solid #ccff00;
-        border-radius: 10px;
-        min-height: 80px;
-        text-align: center;
-        box-shadow: 0 0 10px #ccff00;
-        text-shadow: 0 0 5px #ccff00;
-        overflow-y: auto;
-        max-height: 150px;
-        ">
-            (Waiting for Guide...) </div>
+        <div id="transcript-box">
+            <div class="message-bubble">
+                <div class="message-content">(Waiting for Guide...)</div>
+            </div>
+        </div>
         <!-- Translation Controls -->
-        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;"><select id="lang-select"
-                style="padding: 10px; border-radius: 5px; background: #333; color: white; border: 1px solid #555;">
+        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+            <select id="lang-select"
+                style="padding: 10px; border-radius: 5px; background: #333; color: white; border: 1px solid #555; max-width: 150px;">
                 <option value="original">Original (No Trans)</option>
-                <option value="ko">한국어 (Korean)</option>
-                <option value="en">English</option>
-                <option value="ja" selected>日本語 (Japanese)</option>
-                <option value="zh-CN">中文 (Chinese)</option>
+
+                <optgroup label="Asia (East/SE/South/Central)">
+                    <option value="ko">한국어 (Korean)</option>
+                    <option value="ja">日本語 (Japanese)</option>
+                    <option value="zh-CN">中文 (Chinese Simplified)</option>
+                    <option value="zh-TW">Chinese Traditional</option>
+                    <option value="vi">Vietnamese</option>
+                    <option value="th">Thai</option>
+                    <option value="id">Indonesian</option>
+                    <option value="ms">Malay</option>
+                    <option value="tl">Filipino</option>
+                    <option value="hi">Hindi</option>
+                    <option value="bn">Bengali</option>
+                    <option value="mn">Mongolian</option>
+                    <option value="my">Myanmar (Burmese)</option>
+                    <option value="km">Khmer</option>
+                    <option value="lo">Lao</option>
+                    <option value="ne">Nepali</option>
+                    <option value="si">Sinhala</option>
+                    <option value="ur">Urdu</option>
+                    <option value="uz">Uzbek</option>
+                    <option value="kk">Kazakh</option>
+                    <option value="ky">Kyrgyz</option>
+                    <option value="tg">Tajik</option>
+                    <option value="ceb">Cebuano</option>
+                    <option value="jw">Javanese</option>
+                    <option value="su">Sundanese</option>
+                    <option value="hmn">Hmong</option>
+                    <!-- India Regional -->
+                    <option value="gu">Gujarati</option>
+                    <option value="kn">Kannada</option>
+                    <option value="ml">Malayalam</option>
+                    <option value="mr">Marathi</option>
+                    <option value="pa">Punjabi</option>
+                    <option value="sd">Sindhi</option>
+                    <option value="ta">Tamil</option>
+                    <option value="te">Telugu</option>
+                </optgroup>
+
+                <optgroup label="Europe">
+                    <option value="en">English</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="it">Italian</option>
+                    <option value="es">Spanish</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="ru">Russian</option>
+                    <option value="uk">Ukrainian</option>
+                    <option value="pl">Polish</option>
+                    <option value="nl">Dutch</option>
+                    <option value="da">Danish</option>
+                    <option value="sv">Swedish</option>
+                    <option value="no">Norwegian</option>
+                    <option value="fi">Finnish</option>
+                    <option value="el">Greek</option>
+                    <option value="hu">Hungarian</option>
+                    <option value="cs">Czech</option>
+                    <option value="ro">Romanian</option>
+                    <option value="bg">Bulgarian</option>
+                    <option value="hr">Croatian</option>
+                    <option value="sr">Serbian</option>
+                    <option value="sk">Slovak</option>
+                    <option value="sl">Slovenian</option>
+                    <option value="mk">Macedonian</option>
+                    <option value="bs">Bosnian</option>
+                    <option value="sq">Albanian</option>
+                    <option value="et">Estonian</option>
+                    <option value="lv">Latvian</option>
+                    <option value="lt">Lithuanian</option>
+                    <option value="is">Icelandic</option>
+                    <option value="ga">Irish</option>
+                    <option value="cy">Welsh</option>
+                    <option value="mt">Maltese</option>
+                    <option value="be">Belarusian</option>
+                    <option value="ca">Catalan</option>
+                    <option value="gl">Galician</option>
+                    <option value="eu">Basque</option>
+                    <option value="co">Corsican</option>
+                    <option value="fy">Frisian</option>
+                    <option value="lb">Luxembourgish</option>
+                    <option value="gd">Scots Gaelic</option>
+                    <option value="yi">Yiddish</option>
+                </optgroup>
+
+                <optgroup label="Middle East & Africa">
+                    <option value="ar">Arabic</option>
+                    <option value="iw">Hebrew</option>
+                    <option value="tr">Turkish</option>
+                    <option value="fa">Persian</option>
+                    <option value="ps">Pashto</option>
+                    <option value="ku">Kurdish</option>
+                    <option value="az">Azerbaijani</option>
+                    <option value="hy">Armenian</option>
+                    <option value="ka">Georgian</option>
+                    <option value="sw">Swahili</option>
+                    <option value="af">Afrikaans</option>
+                    <option value="am">Amharic</option>
+                    <option value="ha">Hausa</option>
+                    <option value="ig">Igbo</option>
+                    <option value="yo">Yoruba</option>
+                    <option value="zu">Zulu</option>
+                    <option value="xh">Xhosa</option>
+                    <option value="sn">Shona</option>
+                    <option value="ny">Chichewa</option>
+                    <option value="mg">Malagasy</option>
+                    <option value="so">Somali</option>
+                    <option value="st">Sesotho</option>
+                </optgroup>
+
+                <optgroup label="Americas, Oceania & Other">
+                    <option value="ht">Haitian Creole</option>
+                    <option value="sm">Samoan</option>
+                    <option value="mi">Maori</option>
+                    <option value="haw">Hawaiian</option>
+                    <option value="eo">Esperanto</option>
+                    <option value="la">Latin</option>
+                </optgroup>
             </select><button id="tts-btn" style="
  padding: 10px;
         border-radius: 5px;

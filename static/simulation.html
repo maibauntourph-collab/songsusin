@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Guide System - Load Simulation (60 Users)</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background: #222;
+            margin: 0;
+            padding: 10px;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.2rem;
+            text-align: center;
+        }
+
+        .layout {
+            display: flex;
+            flex: 1;
+            gap: 10px;
+            overflow: hidden;
+        }
+
+        .guide-section {
+            flex: 0 0 350px;
+            display: flex;
+            flex-direction: column;
+            background: #333;
+            padding: 5px;
+            border-radius: 8px;
+        }
+
+        .tourist-grid {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            /* Compact for 60 users */
+            gap: 3px;
+            overflow-y: auto;
+            background: #333;
+            padding: 5px;
+            border-radius: 8px;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+            border-radius: 2px;
+            pointer-events: none;
+            /* Perf: Disable mouse events on mini frames */
+        }
+
+        .frame-container {
+            display: flex;
+            flex-direction: column;
+            height: 150px;
+            /* Reduced height */
+            border: 1px solid #444;
+            background: #000;
+        }
+
+        .label {
+            font-size: 0.7rem;
+            margin-bottom: 2px;
+            color: #aaa;
+            text-align: center;
+            background: #222;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>System Load Test: 1 Guide + 60 Tourists (Multi-Language)</h1>
+    <div class="layout">
+        <!-- Guide -->
+        <div class="guide-section">
+            <div class="label" style="font-size: 1rem; padding: 5px;">GUIDE DEVICE</div>
+            <iframe src="/?auto_role=guide" id="guide-frame" style="pointer-events: auto;"></iframe>
+        </div>
+
+        <!-- Tourists -->
+        <div class="tourist-grid" id="tourist-grid">
+            <!-- Will be populated by JS -->
+        </div>
+    </div>
+
+    <script>
+        const touristCount = 60;
+        const grid = document.getElementById('tourist-grid');
+        // Full list of 100+ languages
+        const languages = [
+            'ko', 'en', 'ja', 'zh-CN', 'zh-TW', 'es', 'fr', 'de', 'it', 'ru',
+            'vi', 'th', 'id', 'ms', 'hi', 'bn', 'ar', 'pt', 'tr', 'pl',
+            'nl', 'uk', 'sv', 'no', 'da', 'fi', 'cs', 'hu', 'el', 'ro',
+            'tl', 'my', 'km', 'lo', 'mn', 'is', 'ga', 'cy', 'mt', 'sk',
+            'sl', 'hr', 'sr', 'bs', 'mk', 'sq', 'bg', 'et', 'lv', 'lt',
+            'af', 'sw', 'am', 'zu', 'xh', 'yo', 'ig', 'ha', 'fa', 'iw',
+            'ur', 'ne', 'si', 'pa', 'gu', 'ta', 'te', 'kn', 'ml', 'mr',
+            'uz', 'kk', 'ky', 'tg', 'az', 'hy', 'ka', 'eu', 'ca', 'gl',
+            'jw', 'su', 'ceb', 'hmn', 'sm', 'mi', 'haw', 'ht', 'eo', 'la',
+            'be', 'co', 'fy', 'lb', 'gd', 'yi', 'ny', 'mg', 'sn', 'so', 'st'
+        ];
+
+        for (let i = 1; i <= touristCount; i++) {
+            const container = document.createElement('div');
+            container.className = 'frame-container';
+
+            // Cycle languages
+            const langIndex = (i - 1) % languages.length;
+            const langCode = languages[langIndex];
+            const langLabel = langCode ? langCode.toUpperCase() : 'UNK';
+
+            const label = document.createElement('div');
+            label.className = 'label';
+
+            // Generate a consistent color based on string hash for visual variety
+            let hash = 0;
+            for (let j = 0; j < langLabel.length; j++) {
+                hash = langLabel.charCodeAt(j) + ((hash << 5) - hash);
+            }
+            const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+            const color = "#" + "00000".substring(0, 6 - c.length) + c;
+
+            label.innerHTML = `User #${i} <span style="color: ${color}; font-weight:bold;">[${langLabel}]</span>`;
+
+            const frame = document.createElement('iframe');
+
+            // Stagger loading
+            setTimeout(() => {
+                frame.src = `/?auto_role=tourist&sim_id=${i}&lang=${langCode}&sound=on`;
+            }, i * 50);
+
+            container.appendChild(label);
+            container.appendChild(frame);
+            grid.appendChild(container);
+        }
+    </script>
+</body>
+
+</html>
