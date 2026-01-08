@@ -154,6 +154,8 @@ async def offer(sid, data):
 
     if role == 'guide':
         guide_pc = pc
+        rec_filename = f"recordings/guide_{uuid.uuid4().hex[:8]}.wav"
+        recorder = MediaRecorder(rec_filename)
         @pc.on("track")
         async def on_track(track):
             global guide_track
@@ -163,8 +165,6 @@ async def offer(sid, data):
                 
                 # Start Recording
                 os.makedirs("recordings", exist_ok=True)
-                rec_filename = f"recordings/guide_{uuid.uuid4().hex[:8]}.wav"
-                recorder = MediaRecorder(rec_filename)
                 recorder.addTrack(track)
                 await recorder.start()
                 logger.info(f"Recording started: {rec_filename}")
@@ -419,9 +419,10 @@ async def upload_places(file: UploadFile = File(...)):
             return {"status": "error", "message": "Pandas library not installed on server. Cannot process files."}
             
         contents = await file.read()
-        if file.filename.endswith('.csv'):
+        filename = file.filename or "uploaded_file"
+        if filename.endswith('.csv'):
             df = pd.read_csv(io.BytesIO(contents))
-        elif file.filename.endswith(('.xls', '.xlsx')):
+        elif filename.endswith(('.xls', '.xlsx')):
             df = pd.read_excel(io.BytesIO(contents))
         else:
             return {"status": "error", "message": "Invalid file format. Use .csv or .xlsx"}
@@ -611,8 +612,7 @@ async def export_places():
 
         # Save to BytesIO
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Places')
+        df.to_excel(output, index=False, sheet_name='Places', engine='openpyxl')
         
         output.seek(0)
         
@@ -666,7 +666,8 @@ async def restart_server():
     logger.info("Restart requested")
     import sys
     # This replaces the current process with a new one
-    os.execv(sys.executable, ['python'] + sys.argv)
+    python_exe = sys.executable or "python"
+    os.execv(python_exe, [python_exe] + sys.argv)
     return {"status": "restarting"}
 
 if __name__ == "__main__":
