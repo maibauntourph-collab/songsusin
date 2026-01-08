@@ -391,7 +391,7 @@ window.startBroadcast = async function () {
             recognition.interimResults = true;
             recognition.lang = 'ko-KR'; // Guide speaks Korean
 
-            // Deep Debugging for STT
+            // STT Engine Setup
             recognition.onstart = () => {
                 log("STT Engine: Started");
                 updateGuideTranscriptUI("🎤 Listening...", false);
@@ -412,7 +412,9 @@ window.startBroadcast = async function () {
             recognition.onend = () => {
                 log("STT Engine: Ended (Will Auto-restart)");
                 if (isBroadcasting) {
-                    try { recognition.start(); } catch (e) { log("STT Restart Fail: " + e); }
+                    setTimeout(() => {
+                        try { recognition.start(); } catch (e) { log("STT Restart Fail: " + e); }
+                    }, 1000);
                 }
             };
 
@@ -428,19 +430,14 @@ window.startBroadcast = async function () {
                     }
                 }
 
-                // Handle Final Result (Translate & Save)
                 if (final) {
-                    socket.emit('transcript_msg', { text: final, source_lang: 'ko', isFinal: true });
                     log("STT Final: " + final);
-
-                    // Local UI (Final)
+                    socket.emit('transcript_msg', { text: final, source_lang: 'ko', isFinal: true });
                     updateGuideTranscriptUI(final, true);
                 }
 
-                // Handle Interim Result (Real-time feedback)
                 if (interim) {
                     socket.emit('transcript_msg', { text: interim, source_lang: 'ko', isFinal: false });
-                    // Local UI (Interim)
                     updateGuideTranscriptUI(interim, false);
                 }
             };
@@ -452,53 +449,28 @@ window.startBroadcast = async function () {
             }
         }
 
-        // Helper for Guide UI
-        function updateGuideTranscriptUI(text, isFinal) {
-            const guideBox = document.getElementById('guide-transcript-box');
-            if (!guideBox) return;
+        // --- Audio Transmission ---
+        // Setup Visualizer for Guide
+        setupAudioAnalysis(localStream, 'guide-meter');
 
-            if (isFinal) {
-                // Append final text
-                // Create a new line or span? For simplicity, we just replace or append.
-                // Re-using the box logic:
-                guideBox.innerHTML = `<span style="color: #ccff00; text-shadow: 0 0 5px #ccff00;">${text}</span>`;
-            } else {
-                // Show interim text in different color (e.g. White or Orange)
-                guideBox.innerHTML = `<span style="color: #fff;">${text}</span>`;
-            }
-        }
-        // Initialize WebRTC or Fallback depending on Mode
         if (useWebRTC) {
             els.guideStatus.textContent = "Broadcasting (WebRTC)...";
-
-            // Initialize WebRTC
             createPeerConnection();
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-            // Setup Visualizer for Guide
-            setupAudioAnalysis(localStream, 'guide-meter');
-
-            // Create Offer
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
             log("Gathering ICE candidates...");
             await waitForICEGathering(pc);
-            log("ICE Gathering Complete");
-
             socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
-
-            // Also setup Recorder as Fallback (Double Safety)
+            
+            // ALWAYS start WebSocket fallback for Android compatibility
             setupFallbackRecorder(localStream);
         } else {
-            // Manual Mode (WebSocket Only)
-            els.guideStatus.textContent = "Broadcasting (Manual/WebSocket)...";
-            // Setup Visualizer
-            setupAudioAnalysis(localStream, 'guide-meter');
-            // Direct to WebSocket Recorder
+            els.guideStatus.textContent = "Broadcasting (WebSocket)...";
             setupFallbackRecorder(localStream);
         }
-
     } catch (err) {
         log("Error starting broadcast: " + err);
         stopBroadcast();
@@ -555,34 +527,31 @@ function updateCounters() {
     }
 }
 
+function updateGuideTranscriptUI(text, isFinal) {
+    const guideBox = document.getElementById('guide-transcript-box');
+    if (!guideBox) return;
+
+    if (isFinal) {
+        guideBox.innerHTML = `<span style="color: #ccff00; text-shadow: 0 0 5px #ccff00;">${text}</span>`;
+    } else {
+        guideBox.innerHTML = `<span style="color: #fff;">${text}</span>`;
+    }
+}
+
 function getSupportedMimeType() {
     const types = [
         'audio/webm;codecs=opus',
         'audio/webm',
         'audio/ogg;codecs=opus',
-        'audio/ogg',
         'audio/mp4',
-        'audio/mp4;codecs=mp4a.40.2',
-        'audio/mpeg',
-        'audio/aac',
-        'audio/3gpp',
-        'audio/3gpp2',
-        ''
+        'audio/aac'
     ];
-    
-    log("Checking supported MIME types on this device...");
-    const supported = [];
     for (const type of types) {
-        if (type === '' || MediaRecorder.isTypeSupported(type)) {
-            if (type !== '') supported.push(type);
-            if (type !== '') {
-                log("Selected MediaRecorder MIME: " + type);
-                return type;
-            }
+        if (MediaRecorder.isTypeSupported(type)) {
+            log("Selected MediaRecorder MIME: " + type);
+            return type;
         }
     }
-    log("Supported MIME types: " + (supported.length > 0 ? supported.join(', ') : 'none detected'));
-    log("Warning: No standard MIME type supported for MediaRecorder, using browser default");
     return '';
 }
 
