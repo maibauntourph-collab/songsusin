@@ -416,25 +416,52 @@ window.startBroadcast = async function () {
             // recognition.onspeechstart = () => log("STT Engine: Speech Detected");
             recognition.onnomatch = () => log("STT Engine: No Match");
             recognition.onerror = (e) => {
-                log("STT Error: " + e.error);
+                log("STT Error: " + e.error + " (message: " + (e.message || 'none') + ")");
                 if (e.error === 'not-allowed') {
-                    // alert("STT Permission Denied. Check settings.");
                     els.guideStatus.textContent = "Error: STT Blocked";
                     els.guideStatus.classList.add('status-error');
                 } else if (e.error === 'network') {
                     els.guideStatus.textContent = "Error: STT Network Issue";
+                } else if (e.error === 'aborted') {
+                    // Android often aborts STT - auto-restart
+                    log("[Android Debug] STT aborted - will auto-restart");
+                } else if (e.error === 'no-speech') {
+                    // No speech detected - this is normal, just restart
+                    log("[Android Debug] No speech detected - will auto-restart");
                 }
             };
+            
+            // Android-specific: Add audio events for debugging
+            recognition.onaudiostart = () => log("[Android Debug] STT Audio Capture Started");
+            recognition.onspeechstart = () => log("[Android Debug] Speech Detected!");
+            recognition.onspeechend = () => log("[Android Debug] Speech Ended");
             recognition.onend = () => {
                 log("STT Engine: Ended (Will Auto-restart)");
                 if (isBroadcasting) {
+                    // Android Chrome needs longer delay for STT restart
+                    const isAndroid = /Android/i.test(navigator.userAgent);
+                    const restartDelay = isAndroid ? 500 : 1000;
+                    log("[Android Debug] STT restart in " + restartDelay + "ms, isAndroid=" + isAndroid);
                     setTimeout(() => {
-                        try { recognition.start(); } catch (e) { log("STT Restart Fail: " + e); }
-                    }, 1000);
+                        try { 
+                            recognition.start(); 
+                            log("[Android Debug] STT restarted successfully");
+                        } catch (e) { 
+                            log("STT Restart Fail: " + e); 
+                            // On Android, try again after another delay if first restart fails
+                            if (isAndroid && isBroadcasting) {
+                                setTimeout(() => {
+                                    try { recognition.start(); } catch (e2) { log("STT Retry Fail: " + e2); }
+                                }, 1000);
+                            }
+                        }
+                    }, restartDelay);
                 }
             };
 
             recognition.onresult = (event) => {
+                log("[Android Debug] STT onresult fired, resultIndex=" + event.resultIndex + ", results.length=" + event.results.length);
+                
                 let interim = '';
                 let final = '';
 
@@ -448,12 +475,21 @@ window.startBroadcast = async function () {
 
                 if (final) {
                     log("STT Final: " + final);
-                    socket.emit('transcript_msg', { text: final, source_lang: 'ko', isFinal: true });
+                    // Check socket connection before emitting
+                    if (socket && socket.connected) {
+                        socket.emit('transcript_msg', { text: final, source_lang: 'ko', isFinal: true });
+                        log("[Android Debug] transcript_msg emitted (final)");
+                    } else {
+                        log("[Android Debug] ERROR: Socket not connected! Cannot emit transcript_msg");
+                    }
                     updateGuideTranscriptUI(final, true);
                 }
 
                 if (interim) {
-                    socket.emit('transcript_msg', { text: interim, source_lang: 'ko', isFinal: false });
+                    // Check socket connection before emitting
+                    if (socket && socket.connected) {
+                        socket.emit('transcript_msg', { text: interim, source_lang: 'ko', isFinal: false });
+                    }
                     updateGuideTranscriptUI(interim, false);
                 }
             };

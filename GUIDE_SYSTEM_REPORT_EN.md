@@ -151,6 +151,42 @@ http://localhost:5000/static/simulation.html
 | `audio_init` | Binary | Init segment |
 | `monitor_update` | Stats Object | Monitor statistics |
 
+## Android Debugging Guide
+
+### Troubleshooting Android → Android Transmission Issues
+
+When using Guide mode on Android Chrome, check the following:
+
+1. **Check Browser Console Logs**
+   - Use `chrome://inspect` for mobile debugging
+   - Look for logs starting with `[Android Debug]`
+
+2. **Required Log Messages**
+   ```
+   [Android Debug] STT Audio Capture Started
+   [Android Debug] Speech Detected!
+   [Android Debug] STT onresult fired
+   [Android Debug] transcript_msg emitted (final)
+   ```
+
+3. **Common Issues**
+   - `STT Error: not-allowed` → Allow microphone permission
+   - `STT Error: network` → Check internet connection
+   - `Socket not connected` → Refresh the page
+
+4. **Android Chrome Settings**
+   - Settings > Site Settings > Microphone > Allow
+   - HTTPS connection recommended (STT limited on HTTP)
+
+### Server Log Verification
+
+Server should show `[TRANSCRIPT]` logs:
+```
+[TRANSCRIPT] Received from xxx: text='Hello...', isFinal=True
+[TRANSCRIPT] Emitting to tourists and guides: original='Hello...'
+[TRANSCRIPT] Emit complete
+```
+
 ## Test Environment
 
 - **Server**: Python 3.11, FastAPI, Socket.IO

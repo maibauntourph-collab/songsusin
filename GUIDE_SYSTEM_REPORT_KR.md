@@ -151,6 +151,42 @@ http://localhost:5000/static/simulation.html
 | `audio_init` | Binary | 초기화 세그먼트 |
 | `monitor_update` | Stats Object | 모니터 통계 |
 
+## 안드로이드 디버깅 가이드
+
+### 안드로이드 → 안드로이드 전송 문제 해결
+
+안드로이드 Chrome에서 가이드 역할 시 다음 사항을 확인하세요:
+
+1. **브라우저 콘솔 로그 확인**
+   - `chrome://inspect`로 모바일 디버깅
+   - `[Android Debug]` 로 시작하는 로그 확인
+
+2. **필수 확인 로그**
+   ```
+   [Android Debug] STT Audio Capture Started
+   [Android Debug] Speech Detected!
+   [Android Debug] STT onresult fired
+   [Android Debug] transcript_msg emitted (final)
+   ```
+
+3. **문제 발생 시**
+   - `STT Error: not-allowed` → 마이크 권한 허용 필요
+   - `STT Error: network` → 인터넷 연결 확인
+   - `Socket not connected` → 페이지 새로고침
+
+4. **안드로이드 Chrome 설정**
+   - 설정 > 사이트 설정 > 마이크 > 허용
+   - HTTPS 연결 권장 (HTTP에서는 STT 제한)
+
+### 서버 로그 확인
+
+서버에서 `[TRANSCRIPT]` 로그가 나타나야 합니다:
+```
+[TRANSCRIPT] Received from xxx: text='안녕하세요...', isFinal=True
+[TRANSCRIPT] Emitting to tourists and guides: original='안녕하세요...'
+[TRANSCRIPT] Emit complete
+```
+
 ## 테스트 환경
 
 - **서버**: Python 3.11, FastAPI, Socket.IO
