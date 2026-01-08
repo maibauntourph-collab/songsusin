@@ -720,9 +720,10 @@ socket.on('transcript', (data) => {
         
         const bubble = document.createElement('div');
         bubble.className = 'message-bubble final';
+        // Add highlight class for Android/iOS consistency
         bubble.innerHTML = `
             <span class="message-timestamp">${new Date().toLocaleTimeString()}</span>
-            <div class="message-content">${displayText}</div>
+            <div class="message-content highlight-pen">${displayText}</div>
         `;
         box.prepend(bubble);
         
