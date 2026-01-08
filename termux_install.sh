@@ -9,15 +9,16 @@ pkg update -y && pkg upgrade -y
 
 # 2. Install Dependencies
 echo "[2/4] Installing Python & Tools..."
-pkg install -y python git clang make build-essential libffi openssl
+pkg install -y python rust git clang make build-essential libffi openssl
 
 # 3. Setup Python Environment
 echo "[3/4] Installing Python Libraries..."
-# Upgrade pip first
-pip install --upgrade pip
+# Upgrade pip and build tools
+pip install --upgrade pip setuptools wheel
 
-# Install requirements (ignoring versions that might conflict on mobile)
-# specific fixes for Termux often needed for numpy/pandas, but valid for pure python ones.
+# Install requirements
+# Pin pydantic to v1 to avoid Pydantic V2 rust build issues if possible, or for compatibility
+pip install "pydantic<2"
 pip install fastapi uvicorn "python-socketio" aiortc deep-translator "python-multipart" 
 
 # Note: pandas/openpyxl often hard to compile on phone without specific pre-built wheels. 

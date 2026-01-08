@@ -181,7 +181,12 @@ from deep_translator import GoogleTranslator
 
 # --- Information Registration System (New) ---
 import sqlite3
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
+    logger.warning("Pandas not found. Excel/CSV features will be disabled.")
+
 from fastapi import UploadFile, File, Form
 from pydantic import BaseModel
 import io
@@ -304,6 +309,9 @@ async def add_place(place: Place):
 @app.post("/upload_places")
 async def upload_places(file: UploadFile = File(...)):
     try:
+        if pd is None:
+            return {"status": "error", "message": "Pandas library not installed on server. Cannot process files."}
+            
         contents = await file.read()
         if file.filename.endswith('.csv'):
             df = pd.read_csv(io.BytesIO(contents))
@@ -487,6 +495,9 @@ async def clear_session():
 @app.get("/export_places")
 async def export_places():
     try:
+        if pd is None:
+            return {"status": "error", "message": "Pandas library not installed. Cannot export."}
+            
         conn = sqlite3.connect(DB_PATH)
         # Read into DataFrame
         df = pd.read_sql_query("SELECT name, description, created_at FROM places", conn)

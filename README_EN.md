@@ -22,6 +22,11 @@ python server.py
 ```
 The server starts at `http://0.0.0.0:5000`.
 
+### 🌐 Live Demo
+You can test the system immediately without installation here:
+👉 **https://songsusin.replit.app**
+
+
 ## 3. Mobile Connection
 
 WebRTC requires **HTTPS** or **Localhost** environment to allow microphone access.

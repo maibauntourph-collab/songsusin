@@ -121,8 +121,12 @@
         #guide-transcript-box {
             scroll-behavior: smooth;
         }
+    </style>
+</head>
 
-        </head><body>< !-- Server Control Toolbar --><div style="
+<body>
+    <!-- Server Control Toolbar -->
+    <div style="
  position: fixed;
         top: 0;
         left: 0;
@@ -137,7 +141,44 @@
         z-index: 1000;
         box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
         ">
- <<<<<<< HEAD <div style="font-weight: bold; font-size: 1.1rem;">Guide System</div><div style="display: flex; gap: 15px;">< !-- Refresh --><div onclick="location.reload()" style="cursor: pointer; text-align: center;"><span style="font-size: 1.5rem;">🔄</span></div>< !-- Restart Server --><div onclick="confirmRestart()" style="cursor: pointer; text-align: center;"><span style="font-size: 1.5rem;">🔁</span></div>< !-- Run (Start Broadcast) --><div onclick="startBroadcast()" style="cursor: pointer; text-align: center;"><span style="font-size: 1.5rem;">▶️</span></div>< !-- Stop Server (Kill) --><div onclick="confirmShutdown()" style="cursor: pointer; text-align: center;"><span style="font-size: 1.5rem;">🛑</span></div></div></div><div style="height: 60px;"></div>< !-- Spacer --><div class="container" id="role-selection"><h1>Role Selection</h1><button class="btn-guide" onclick="selectRole('guide')">I am Guide (Speaker)</button><button class="btn-tourist" onclick="selectRole('tourist')">I am Tourist (Listener)</button></div><div class="container hidden" id="guide-controls"><h1>Guide Mode</h1><div class="status" id="guide-status">Ready</div><div class="data-counter" id="guide-counter">TX: 0 KB</div>< !-- Guide Meter --><span class="meter-label">Microphone Level:</span><div class="meter-container"><div class="meter-fill" id="guide-meter"></div></div><button class="btn-guide" onclick="startBroadcast()">Start Broadcast</button><button class="btn-stop hidden" onclick="stopBroadcast()">Stop</button>< !-- Guide Transcript Feedback --><div id="guide-transcript-box" style="
+        <div style="font-weight: bold; font-size: 1.1rem;">Guide System</div>
+        <div style="display: flex; gap: 15px;">
+            <!-- Network Mode Indicator -->
+            <div id="network-mode"
+                style="font-size: 0.8rem; background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 4px; display:flex; align-items:center;">
+                Checking...</div>
+            <!-- Refresh -->
+            <div onclick="location.reload()" style="cursor: pointer; text-align: center;"><span
+                    style="font-size: 1.5rem;">🔄</span></div>
+            <!-- Restart Server -->
+            <div onclick="confirmRestart()" style="cursor: pointer; text-align: center;"><span
+                    style="font-size: 1.5rem;">🔁</span></div>
+            <!-- Run (Start Broadcast) -->
+            <div onclick="startBroadcast()" style="cursor: pointer; text-align: center;"><span
+                    style="font-size: 1.5rem;">▶️</span></div>
+            <!-- Stop Server (Kill) -->
+            <div onclick="confirmShutdown()" style="cursor: pointer; text-align: center;"><span
+                    style="font-size: 1.5rem;">🛑</span></div>
+        </div>
+    </div>
+    <div style="height: 60px;"></div>
+    <!-- Spacer -->
+    <div class="container" id="role-selection">
+        <h1>Role Selection</h1><button class="btn-guide" onclick="selectRole('guide')">I am Guide
+            (Speaker)</button><button class="btn-tourist" onclick="selectRole('tourist')">I am Tourist
+            (Listener)</button>
+    </div>
+    <div class="container hidden" id="guide-controls">
+        <h1>Guide Mode</h1>
+        <div class="status" id="guide-status">Ready</div>
+        <div class="data-counter" id="guide-counter">TX: 0 KB</div>
+        <!-- Guide Meter --><span class="meter-label">Microphone Level:</span>
+        <div class="meter-container">
+            <div class="meter-fill" id="guide-meter"></div>
+        </div><button class="btn-guide" onclick="startBroadcast()">Start Broadcast</button><button
+            class="btn-stop hidden" onclick="stopBroadcast()">Stop</button>
+        <!-- Guide Transcript Feedback -->
+        <div id="guide-transcript-box" style="
  background: #222;
         color: #ccff00;
         font-family: 'Courier New',
@@ -150,12 +191,86 @@
         min-height: 40px;
         text-align: center;
         ">
-(Your Speech Text Will Appear Here...) </div>< !-- Guide Admin Panel --><div id="guide-admin-panel" style="margin-top: 30px; border-top: 1px solid #444; padding-top: 20px;"><h3>🛠️ Guide Admin (Register Info)</h3>< !-- Manual Entry --><div style="background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 15px;"><h4>Manual Entry</h4><input type="text" id="place-name" placeholder="Place Name (e.g. Gyeongbokgung)"
-        style="width: 100%; margin-bottom: 10px; padding: 8px;"><textarea id="place-desc" placeholder="Description..."
-        style="width: 100%; margin-bottom: 10px; padding: 8px; height: 60px;"></textarea><button onclick="addPlace()" style="background: #17a2b8; width: 100%;">Add Place</button></div>< !-- Excel Upload --><div style="background: #2a2a2a; padding: 15px; border-radius: 8px;"><h4>Excel Upload</h4><p style="font-size: 0.8rem; color: #aaa;">Columns: <code>name</code>,
-        <code>description</code></p><input type="file" id="excel-file" accept=".xlsx, .csv" style="margin-bottom: 10px; color: #fff;"><div style="display: flex; gap: 10px;"><button onclick="uploadExcel()" style="background: #28a745; flex: 1;">Upload Excel</button><button onclick="downloadExcel()" style="background: #ffc107; flex: 1; color: #000;">Download Excel</button></div></div><div id="admin-status" style="margin-top: 10px; font-size: 0.9rem;"></div>< !-- Places List --><h4 style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">📋 Registered Places</h4><div id="places-list" style="max-height: 200px; overflow-y: auto; margin-top: 10px;">< !-- Items will be loaded here --></div>< !-- History Section --><h4 style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">📜 Session History (Analysis) </h4><div style="display: flex; gap: 10px;"><button onclick="loadHistory()" style="background: #6f42c1; flex: 1;">Refresh Text Log</button><button onclick="loadRecordings()" style="background: #e0a800; flex: 1; color: #000;">Refresh Audio</button></div>< !-- Tabs or Stacked lists --><h5 style="color: #aaa; margin: 10px 0 5px;">Text Transcripts</h5><div id="history-list"
-        style="max-height: 200px; overflow-y: auto; background: #222; padding: 10px; border-radius: 5px; margin-bottom: 10px;"><div style='color: #888; font-style: italic;'>Click refresh...</div></div><div style="display: flex; gap: 10px; margin-bottom: 10px;"><button onclick="downloadHistory()" style="background: #007bff; flex: 1;">Download Log</button><button onclick="summarizeSession()" style="background: #e83e8c; flex: 1;">AI Summary</button></div><button onclick="clearSession()" style="background: #dc3545; width: 100%; margin-bottom: 10px;">Clear Session</button><h5 style="color: #aaa; margin: 15px 0 5px;">Audio Recordings</h5><div id="recording-list"
-        style="max-height: 150px; overflow-y: auto; background: #222; padding: 10px; border-radius: 5px;"><div style='color: #888; font-style: italic;'>Click refresh audio...</div></div></div></div><div class="container hidden" id="tourist-controls"><h1>Tourist Mode</h1><div class="status" id="tourist-status">Waiting for Guide...</div><div class="data-counter" id="tourist-counter">RX: 0 KB</div>< !-- Karaoke / STT Box --><div id="transcript-box" style="
+            (Your Speech Text Will Appear Here...) </div>
+        <!-- Guide Admin Panel -->
+        <div id="guide-admin-panel" style="margin-top: 30px; border-top: 1px solid #444; padding-top: 20px;">
+            <h3>🛠️ Guide Admin (Register Info)</h3>
+            <h3>🛠️ Guide Admin (Register Info)</h3>
+
+            <!-- Transmission Mode Toggle -->
+            <div
+                style="background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #444;">
+                <h4 style="margin-top:0;">📡 Transmission Mode</h4>
+                <label style="color: #fff; display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="mode-toggle" checked onchange="toggleTransmissionMode(this)">
+                    <span id="mode-label">Automatic (WebRTC + Fallback)</span>
+                </label>
+                <div style="color: #aaa; font-size: 0.8rem; margin-top: 5px;">
+                    Uncheck to Force Manual Mode (WebSocket Only) - Use if tourists hear echoes or connection fails.
+                </div>
+            </div>
+
+            <!-- Manual Entry -->
+            <div style="background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <h4>Manual Entry</h4><input type="text" id="place-name" placeholder="Place Name (e.g. Gyeongbokgung)"
+                    style="width: 100%; margin-bottom: 10px; padding: 8px;"><textarea id="place-desc"
+                    placeholder="Description..."
+                    style="width: 100%; margin-bottom: 10px; padding: 8px; height: 60px;"></textarea><button
+                    onclick="addPlace()" style="background: #17a2b8; width: 100%;">Add
+                    Place</button>
+            </div>
+            <!-- Excel Upload -->
+            <div style="background: #2a2a2a; padding: 15px; border-radius: 8px;">
+                <h4>Excel Upload</h4>
+                <p style="font-size: 0.8rem; color: #aaa;">Columns: <code>name</code>,
+                    <code>description</code>
+                </p><input type="file" id="excel-file" accept=".xlsx, .csv" style="margin-bottom: 10px; color: #fff;">
+                <div style="display: flex; gap: 10px;"><button onclick="uploadExcel()"
+                        style="background: #28a745; flex: 1;">Upload Excel</button><button onclick="downloadExcel()"
+                        style="background: #ffc107; flex: 1; color: #000;">Download
+                        Excel</button></div>
+            </div>
+            <div id="admin-status" style="margin-top: 10px; font-size: 0.9rem;"></div>
+            <!-- Places List -->
+            <h4 style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">📋
+                Registered Places</h4>
+            <div id="places-list" style="max-height: 200px; overflow-y: auto; margin-top: 10px;">
+                <!-- Items will be loaded here -->
+            </div>
+            <!-- History Section -->
+            <h4 style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">
+                📜 Session History (Analysis) </h4>
+            <div style="display: flex; gap: 10px;"><button onclick="loadHistory()"
+                    style="background: #6f42c1; flex: 1;">Refresh Text
+                    Log</button><button onclick="loadRecordings()"
+                    style="background: #e0a800; flex: 1; color: #000;">Refresh
+                    Audio</button></div>
+            <!-- Tabs or Stacked lists -->
+            <h5 style="color: #aaa; margin: 10px 0 5px;">Text Transcripts</h5>
+            <div id="history-list"
+                style="max-height: 200px; overflow-y: auto; background: #222; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                <div style='color: #888; font-style: italic;'>Click refresh...</div>
+            </div>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;"><button onclick="downloadHistory()"
+                    style="background: #007bff; flex: 1;">Download
+                    Log</button><button onclick="summarizeSession()" style="background: #e83e8c; flex: 1;">AI
+                    Summary</button></div>
+            <button onclick="clearSession()" style="background: #dc3545; width: 100%; margin-bottom: 10px;">Clear
+                Session</button>
+            <h5 style="color: #aaa; margin: 15px 0 5px;">Audio Recordings</h5>
+            <div id="recording-list"
+                style="max-height: 150px; overflow-y: auto; background: #222; padding: 10px; border-radius: 5px;">
+                <div style='color: #888; font-style: italic;'>Click refresh audio...
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="container hidden" id="tourist-controls">
+        <h1>Tourist Mode</h1>
+        <div class="status" id="tourist-status">Waiting for Guide...</div>
+        <div class="data-counter" id="tourist-counter">RX: 0 KB</div>
+        <!-- Karaoke / STT Box -->
+        <div id="transcript-box" style="
  background: #000;
         color: #ccff00;
         font-family: 'Courier New',
@@ -172,13 +287,40 @@
         overflow-y: auto;
         max-height: 150px;
         ">
-(Waiting for Guide...) </div>< !-- Translation Controls --><div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;"><select id="lang-select" style="padding: 10px; border-radius: 5px; background: #333; color: white; border: 1px solid #555;"><option value="original">Original (No Trans)</option><option value="ko">한국어 (Korean)</option><option value="en">English</option><option value="ja" selected>日本語 (Japanese)</option><option value="zh-CN">中文 (Chinese)</option></select><button id="tts-btn" style="
+            (Waiting for Guide...) </div>
+        <!-- Translation Controls -->
+        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;"><select id="lang-select"
+                style="padding: 10px; border-radius: 5px; background: #333; color: white; border: 1px solid #555;">
+                <option value="original">Original (No Trans)</option>
+                <option value="ko">한국어 (Korean)</option>
+                <option value="en">English</option>
+                <option value="ja" selected>日本語 (Japanese)</option>
+                <option value="zh-CN">中文 (Chinese)</option>
+            </select><button id="tts-btn" style="
  padding: 10px;
         border-radius: 5px;
         background: #444;
         color: white;
         border: 1px solid #555;
         ">Sound: OFF</button>
- </div><div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;"><button onclick="downloadTranscript()" style="background: #007bff; padding: 10px 20px; border-radius: 5px; color: white; border: none;">Download Log</button><button onclick="summarizeSession()" style="background: #e83e8c; padding: 10px 20px; border-radius: 5px; color: white; border: none;">AI Summary</button></div>< !-- Tourist Meter --><span class="meter-label">Audio Signal:</span><div class="meter-container"><div class="meter-fill" id="tourist-meter"></div></div><button class="btn-tourist" id="play-btn">Tap to Enable Audio</button></div><div id="debug"></div>< !-- Socket.IO CDN --><script src="https://cdn.socket.io/4.7.4/socket.io.min.js"
+        </div>
+        <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;"><button
+                onclick="downloadTranscript()"
+                style="background: #007bff; padding: 10px 20px; border-radius: 5px; color: white; border: none;">Download
+                Log</button><button onclick="summarizeSession()"
+                style="background: #e83e8c; padding: 10px 20px; border-radius: 5px; color: white; border: none;">AI
+                Summary</button></div>
+        <!-- Tourist Meter --><span class="meter-label">Audio Signal:</span>
+        <div class="meter-container">
+            <div class="meter-fill" id="tourist-meter"></div>
+        </div><button class="btn-tourist" id="play-btn">Tap to Enable Audio</button>
+    </div>
+    <div id="debug"></div>
+    <!-- Socket.IO CDN -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"
         integrity="sha384-Gr6Lu2Ajx28mzwyVR8CFkULdCU7kMlZ9UthllibdOSo6qAiN+yXNHqtgdTvFXMT4"
-        crossorigin="anonymous"></script><script src="static/app.js"></script></body></html>
+        crossorigin="anonymous"></script>
+    <script src="static/app.js"></script>
+</body>
+
+</html>

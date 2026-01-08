@@ -152,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
             playBtn.textContent = "Processing...";
             playBtn.style.background = "#ffc107"; // Yellow indicating working
             resumeAudioContext();
-            
+
             // Retry connection if tourist and no active connection
             if (role === 'tourist' && touristAudioActive) {
                 if (!pc || pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
@@ -233,6 +233,38 @@ window.toggleBroadcast = function () {
     }
 }
 
+// Transmission Mode State
+let useWebRTC = true;
+
+window.toggleTransmissionMode = function (cb) {
+    useWebRTC = cb.checked;
+    const label = document.getElementById('mode-label');
+    if (label) label.textContent = useWebRTC ? "Automatic (WebRTC + Fallback)" : "Manual (WebSocket Only)";
+    log("Transmission Mode changed to: " + (useWebRTC ? "Auto" : "Manual"));
+}
+
+window.checkNetworkMode = function () {
+    const el = document.getElementById('network-mode');
+    if (!el) return;
+
+    if (location.hostname === 'localhost' || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.')) {
+        el.innerHTML = "📴 Local Mode (Offline)";
+        el.style.background = "rgba(255, 193, 7, 0.2)"; // Yellow tint
+        el.style.color = "#ffc107";
+        el.style.border = "1px solid #ffc107";
+    } else {
+        el.innerHTML = "🌐 Online Mode (Cloud)";
+        el.style.background = "rgba(40, 167, 69, 0.2)"; // Green tint
+        el.style.color = "#28a745";
+        el.style.border = "1px solid #28a745";
+    }
+}
+
+// Init check
+document.addEventListener('DOMContentLoaded', () => {
+    checkNetworkMode();
+});
+
 window.startBroadcast = async function () {
     log("Start Broadcast clicked");
     try {
@@ -268,24 +300,35 @@ window.startBroadcast = async function () {
             log("Wake Lock error: " + err);
         }
 
-        // Get User Media (Enhanced Audio with Safe Constraints)
+        // Get User Media (Retry Strategy for Android Compatibility)
         try {
-            const audioConstraints = {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                // latency: 0.02, // TOO AGGRESSIVE for some Androids, causing silence
-                // Chrome specific
-                googEchoCancellation: true,
-                googAutoGainControl: true,
-                googNoiseSuppression: true,
-                googHighpassFilter: true
-            };
-
-            localStream = await navigator.mediaDevices.getUserMedia({
-                audio: audioConstraints,
-                video: false
-            });
+            // Level 1: Standard High Quality
+            let stream = null;
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        // Specific Google constraints can cause OverconstrainedError on some Androids
+                        // googEchoCancellation: true, 
+                        // googAutoGainControl: true,
+                        // googNoiseSuppression: true,
+                        // googHighpassFilter: true
+                    },
+                    video: false
+                });
+                log("Microphone access granted (Standard)");
+            } catch (e1) {
+                log("Standard Audio Constraints failed: " + e1);
+                // Level 2: Basic (Fallback)
+                log("Retrying with basic constraints...");
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    audio: true, // Just give me mic
+                    video: false
+                });
+                log("Microphone access granted (Basic)");
+            }
             log("Microphone access granted");
         } catch (e) {
             log("Microphone access denied: " + e);
@@ -392,27 +435,37 @@ window.startBroadcast = async function () {
                 guideBox.innerHTML = `<span style="color: #fff;">${text}</span>`;
             }
         }
-        // Initialize WebRTC
-        els.guideStatus.textContent = "Broadcasting (WebRTC)...";
+        // Initialize WebRTC or Fallback depending on Mode
+        if (useWebRTC) {
+            els.guideStatus.textContent = "Broadcasting (WebRTC)...";
 
-        // Initialize WebRTC
-        createPeerConnection();
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            // Initialize WebRTC
+            createPeerConnection();
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-        // Setup Visualizer for Guide
-        setupAudioAnalysis(localStream, 'guide-meter');
+            // Setup Visualizer for Guide
+            setupAudioAnalysis(localStream, 'guide-meter');
 
-        // Create Offer
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
+            // Create Offer
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
 
-        log("Gathering ICE candidates...");
-        await waitForICEGathering(pc);
-        log("ICE Gathering Complete");
+            log("Gathering ICE candidates...");
+            await waitForICEGathering(pc);
+            log("ICE Gathering Complete");
 
-        socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
-        // Fallback: Recorder
-        setupFallbackRecorder(localStream);
+            socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
+
+            // Also setup Recorder as Fallback (Double Safety)
+            setupFallbackRecorder(localStream);
+        } else {
+            // Manual Mode (WebSocket Only)
+            els.guideStatus.textContent = "Broadcasting (Manual/WebSocket)...";
+            // Setup Visualizer
+            setupAudioAnalysis(localStream, 'guide-meter');
+            // Direct to WebSocket Recorder
+            setupFallbackRecorder(localStream);
+        }
 
     } catch (err) {
         log("Error starting broadcast: " + err);
@@ -447,6 +500,10 @@ window.stopBroadcast = function () {
     // location.reload(); 
     // Manual reset:
     els.guideStatus.textContent = "Ready (Paused)";
+
+    // Ensure we stay on Guide Page
+    els.roleSel.classList.add('hidden');
+    els.guideCtrl.classList.remove('hidden');
 }
 
 // Data Counters
@@ -468,16 +525,17 @@ function getSupportedMimeType() {
         'audio/webm;codecs=opus',
         'audio/webm',
         'audio/ogg',
-        'audio/mp4',
+        'audio/mp4', // iOS support
         'audio/aac'
     ];
     for (const type of types) {
         if (MediaRecorder.isTypeSupported(type)) {
-            log("Selected MIME: " + type);
+            log("Selected MediaRecorder MIME: " + type);
             return type;
         }
     }
-    return null;
+    log("Warning: No standard MIME type supported for MediaRecorder");
+    return ''; // Let browser decide default
 }
 
 function setupFallbackRecorder(stream) {
@@ -488,6 +546,7 @@ function setupFallbackRecorder(stream) {
     if (mimeType) {
         options = { mimeType: mimeType };
     } else {
+        log("No MIME specified, using browser default");
     }
 
     try {
@@ -568,35 +627,41 @@ function createPeerConnection() {
 
     pc.ontrack = (event) => {
         log("Track received! ID: " + event.track.id + " Kind: " + event.track.kind);
-        els.touristStatus.textContent = "Receiving Audio Stream...";
-        const stream = event.streams[0];
-        const audio = new Audio();
-        audio.srcObject = stream;
-        audio.autoplay = true;
-        audio.playsInline = true;
-        audio.controls = true; // Show controls to allow manual play if needed
-        audio.style.marginTop = "20px";
-        document.body.appendChild(audio);
 
-        // Setup Visualizer for Tourist
-        setupAudioAnalysis(stream, 'tourist-meter');
+        // CRITICAL FIX: Only Tourists should play the audio stream to prevent howling/feedback
+        if (role === 'tourist') {
+            els.touristStatus.textContent = "Receiving Audio Stream...";
+            const stream = event.streams[0];
+            const audio = new Audio();
+            audio.srcObject = stream;
+            audio.autoplay = true;
+            audio.playsInline = true;
+            audio.controls = true; // Show controls to allow manual play if needed
+            audio.style.marginTop = "20px";
+            document.body.appendChild(audio);
 
-        // Ensure playback
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-            playPromise.then(_ => {
-                log("Audio playing");
-                els.touristStatus.textContent = "Audio Playing!";
-            }).catch(error => {
-                log("Auto-play blocked: " + error);
-                els.touristStatus.textContent = "Click 'Tap to Enable Audio' again";
-                document.getElementById('play-btn').style.display = 'block';
-                // Re-bind click to play this specific audio
-                document.getElementById('play-btn').onclick = () => {
-                    audio.play();
-                    document.getElementById('play-btn').style.display = 'none';
-                };
-            });
+            // Setup Visualizer for Tourist
+            setupAudioAnalysis(stream, 'tourist-meter');
+
+            // Ensure playback
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.then(_ => {
+                    log("Audio playing");
+                    els.touristStatus.textContent = "Audio Playing!";
+                }).catch(error => {
+                    log("Auto-play blocked: " + error);
+                    els.touristStatus.textContent = "Click 'Tap to Enable Audio' again";
+                    document.getElementById('play-btn').style.display = 'block';
+                    // Re-bind click to play this specific audio
+                    document.getElementById('play-btn').onclick = () => {
+                        audio.play();
+                        document.getElementById('play-btn').style.display = 'none';
+                    };
+                });
+            }
+        } else {
+            log("Ignoring incoming track (Guide Mode) to prevent echo.");
         }
     }
 } // End createPeerConnection
@@ -669,13 +734,13 @@ window.selectRole = function (r) {
 // Full teardown of all tourist audio resources
 function teardownTouristAudio() {
     log("Tearing down tourist audio...");
-    
+
     // Close WebRTC
     if (pc) {
         pc.close();
         pc = null;
     }
-    
+
     // Close fallback audio
     if (fallbackAudioElement) {
         fallbackAudioElement.pause();
@@ -683,7 +748,7 @@ function teardownTouristAudio() {
         fallbackAudioElement = null;
     }
     if (mediaSource && mediaSource.readyState === 'open') {
-        try { mediaSource.endOfStream(); } catch(e) {}
+        try { mediaSource.endOfStream(); } catch (e) { }
     }
     mediaSource = null;
     sourceBuffer = null;
@@ -701,7 +766,7 @@ function resetFallbackState() {
         fallbackAudioElement = null;
     }
     if (mediaSource && mediaSource.readyState === 'open') {
-        try { mediaSource.endOfStream(); } catch(e) {}
+        try { mediaSource.endOfStream(); } catch (e) { }
     }
     mediaSource = null;
     sourceBuffer = null;
@@ -830,7 +895,7 @@ function appendToStream(data) {
 socket.on('audio_init', (data) => {
     // Ignore audio if tourist has stopped listening
     if (!touristAudioActive) return;
-    
+
     log("Received audio init segment from server");
 
     const toArrayBuffer = (input) => {
@@ -853,7 +918,7 @@ socket.on('audio_init', (data) => {
 socket.on('audio_chunk', (data) => {
     // Ignore audio if tourist has stopped listening
     if (!touristAudioActive) return;
-    
+
     rxBytes += data.byteLength || data.size || 0;
     updateCounters();
 
@@ -1231,9 +1296,9 @@ window.downloadHistory = async function () {
         data.history.forEach(item => {
             txt += `[${item.created_at}] ${item.text}\n`;
             if (item.translations) {
-                txt += `   (EN): ${item.translations.en}\n`;
-                txt += `   (JP): ${item.translations.ja}\n`;
-                txt += `   (CN): ${item.translations['zh-CN']}\n`;
+                txt += `   (EN): ${item.translations.en || '-'}\n`;
+                txt += `   (JP): ${item.translations.ja || '-'}\n`;
+                txt += `   (CN): ${item.translations['zh-CN'] || '-'}\n`;
             }
             txt += "----------------------------\n";
         });
