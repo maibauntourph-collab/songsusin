@@ -78,6 +78,14 @@ The system uses MediaSource Extensions (MSE) API for continuous audio streaming:
   - Connected tourists count by language
   - Individual tourist session tracking
 
+## Latest Updates (Jan 8, 2026)
+- **Fixed "Waiting for Guide" issue**: Added `request_guide_status` event for manual status sync
+- **Improved guide status broadcasting**: All tourists now receive status updates when guide joins/broadcasts
+- **Android highlight fix**: Explicit `highlight-pen` class on translated text
+- **Removed alert sounds**: Disabled audio detection alerts during guide transmission
+- **Added TTS support**: Tourists can enable voice reading of translated text
+- **Created test reports**: `GUIDE_SYSTEM_REPORT_KR.md` and `GUIDE_SYSTEM_REPORT_EN.md`
+
 ## Audio Control
 - **Guide**: Has Start/Stop Broadcast buttons to control when audio is transmitted
 - **Tourist**: Automatically receives audio when Guide broadcasts - no manual controls needed
@@ -86,3 +94,7 @@ State management:
 - `touristAudioActive`: Set to true when tourist selects role, audio events are processed
 - Socket guards on `audio_chunk` and `audio_init` prevent stale data processing
 - WebRTC failure automatically falls back to WebSocket audio streaming
+
+## Documentation
+- `GUIDE_SYSTEM_REPORT_KR.md` - Test report in Korean
+- `GUIDE_SYSTEM_REPORT_EN.md` - Test report in English
