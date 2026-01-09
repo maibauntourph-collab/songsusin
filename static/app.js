@@ -28,11 +28,10 @@ window.setAudioMode = function (mode) {
     log("[Audio Mode] Set to: " + mode);
 
     // UI Update
-    const sttStatus = document.getElementById('stt-status');
     if (mode === 'stt') {
-        if (sttStatus) sttStatus.textContent = "🎤 STT Mode: Speech-to-text enabled";
+        if (sttStatus) sttStatus.textContent = "🎤 STT Mode (Auto)";
     } else {
-        if (sttStatus) sttStatus.textContent = "🔊 Recorder Mode: Broadcast audio only";
+        if (sttStatus) sttStatus.textContent = "🔊 Recorder Mode (Audio Only)";
     }
 
     // Dynamic Mode Switching Logic
@@ -884,7 +883,14 @@ function setupFallbackRecorder(stream) {
 
         log("MediaRecorder created successfully. Actual mimeType: " + recorder.mimeType);
 
+        let chunkCount = 0;
         recorder.ondataavailable = e => {
+            chunkCount++;
+            // Log every 10th chunk or if size is small/suspicious
+            if (chunkCount % 20 === 0 || e.data.size < 100) {
+                log(`[Recorder Debug] Chunk #${chunkCount}: Size=${e.data.size}, State=${recorder.state}, Mime=${recorder.mimeType}`);
+            }
+
             if (e.data.size > 10) { // Filter out empty/tiny headers (~1 byte artifacts)
                 // Log only occasionally to avoid spam, but log first few
                 if (txBytes === 0) log("Recorder produced first data: " + e.data.size + " bytes");
@@ -898,8 +904,8 @@ function setupFallbackRecorder(stream) {
                     els.guideStatus.textContent = "Connection Lost! Reconnecting...";
                     els.guideStatus.style.color = "red";
                 }
-            } else if (e.data.size > 0) {
-                log("Recorder produced tiny data (ignored): " + e.data.size + " bytes");
+            } else {
+                log("[Recorder Debug] Ignored tiny chunk: " + e.data.size + " bytes");
             }
         };
 
