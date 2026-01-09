@@ -694,10 +694,112 @@ async def restart_server():
     os.execv(python_exe, [python_exe] + sys.argv)
     return {"status": "restarting"}
 
+# --- Automatic SSL Certificate Generation ---
+def generate_self_signed_cert(cert_file="cert.pem", key_file="key.pem"):
+    """
+    Generates a self-signed SSL certificate and key if they don't exist.
+    Requires: pip install cryptography
+    """
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        print(f"✅ Found existing SSL certificate: {cert_file}, {key_file}")
+        return
+
+    print("⚠️  SSL certificate not found. Generating self-signed certificate...")
+    try:
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.hazmat.primitives import serialization
+        import datetime
+
+        # Generate private key
+        key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+        )
+
+        # Generate certificate
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, u"KR"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"Seoul"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, u"Seoul"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"Mobile Guide System"),
+            x509.NameAttribute(NameOID.COMMON_NAME, u"localhost"),
+        ])
+
+        cert = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            key.public_key()
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            datetime.datetime.utcnow()
+        ).not_valid_after(
+            # Valid for 10 years
+            datetime.datetime.utcnow() + datetime.timedelta(days=3650)
+        ).add_extension(
+            x509.SubjectAlternativeName([x509.DNSName(u"localhost")]),
+            critical=False,
+        ).sign(key, hashes.SHA256())
+
+        # Write key to file
+        with open(key_file, "wb") as f:
+            f.write(key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption(),
+            ))
+
+        # Write cert to file
+        with open(cert_file, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+
+        print(f"✅ Generated new self-signed SSL certificate: {cert_file}, {key_file}")
+
+    except ImportError:
+        print("❌ 'cryptography' library not found. Cannot generate SSL cert.")
+        print("   Please run: pip install cryptography")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error generating SSL cert: {e}")
+        sys.exit(1)
+
 if __name__ == "__main__":
     import uvicorn
-    print("\n" + "="*60)
-    print("🚀 Mobile Guide Server Running on Port 5000")
-    print("📊 Load Test Simulation: http://0.0.0.0:5000/static/simulation.html")
-    print("="*60 + "\n")
-    uvicorn.run(sio_app, host="0.0.0.0", port=5000)
+    import socket
+    
+    # Generate SSL certs for HTTPS
+    generate_self_signed_cert()
+
+    # Get Local IP
+    hostname = socket.gethostname()
+    try:
+        local_ip = socket.gethostbyname(hostname)
+        # Try to find the most likely LAN IP (often starts with 192. or 10.)
+        # This is a simple heuristic; socket.gethostbyname might return localhost or VPN IP
+    except:
+        local_ip = "127.0.0.1"
+
+    print("\n" + "="*50)
+    print(f"🚀 Mobile Guide Server Running (HTTPS Mode)")
+    print(f"💻 Local Access: https://localhost:5000")
+    print(f"📱 Mobile Access: https://{local_ip}:5000")
+    print("-" * 50)
+    print("⚠️  IMPORTANT: Because this is a self-signed certificate:")
+    print("   1. You will see a 'Not Secure' or 'Connection is not private' warning.")
+    print("   2. Click 'Advanced' -> 'Proceed to...' (unsafe) to connect.")
+    print("   3. Microphone permissions will now work on iOS and Android without flags!")
+    print("="*50 + "\n")
+
+    # Run with SSL
+    uvicorn.run(
+        sio_app, 
+        host="0.0.0.0", 
+        port=5000,
+        ssl_keyfile="key.pem",
+        ssl_certfile="cert.pem"
+    )

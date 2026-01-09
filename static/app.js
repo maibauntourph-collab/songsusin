@@ -19,10 +19,10 @@ let offlineMode = false;
 // On Android, these conflict - user must choose one
 let audioMode = 'stt'; // Default to STT mode
 
-window.setAudioMode = function(mode) {
+window.setAudioMode = function (mode) {
     audioMode = mode;
     log("[Audio Mode] Set to: " + mode);
-    
+
     const sttStatus = document.getElementById('stt-status');
     if (mode === 'stt') {
         if (sttStatus) sttStatus.textContent = "🎤 STT Mode: Speech-to-text enabled";
@@ -35,7 +35,7 @@ function detectOfflineMode() {
     // Check if we're in an offline/local environment
     const isLocalIP = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|localhost|127\.0\.0\.1)/.test(location.hostname);
     const isOffline = !navigator.onLine;
-    
+
     if (isOffline || (isLocalIP && !navigator.onLine)) {
         offlineMode = true;
         log("[Offline Mode] Detected offline/local environment - STT disabled, audio-only mode");
@@ -60,7 +60,7 @@ window.addEventListener('offline', () => {
 function updateOfflineModeUI() {
     const sttStatus = document.getElementById('stt-status');
     const offlineIndicator = document.getElementById('offline-indicator');
-    
+
     if (offlineMode) {
         if (sttStatus) sttStatus.textContent = "⚠️ Offline Mode (Audio Only)";
         if (offlineIndicator) offlineIndicator.classList.remove('hidden');
@@ -143,13 +143,47 @@ function log(msg) {
 
 // Initial selectRole removed. Use the merged one below.
 
+// --- Guide View Mode Logic ---
+window.setGuideViewMode = function (mode) {
+    const devSection = document.getElementById('guide-dev-section');
+    const simplePlace = document.getElementById('simple-place-input');
+    const btnSimple = document.getElementById('btn-mode-simple');
+    const btnDev = document.getElementById('btn-mode-dev');
+
+    if (mode === 'simple') {
+        if (devSection) devSection.classList.add('hidden');
+        if (simplePlace) simplePlace.classList.remove('hidden');
+
+        // Button Styles
+        if (btnSimple) btnSimple.style.background = "#007bff"; // Active Blue
+        if (btnDev) btnDev.style.background = "#6c757d"; // Inactive Gray
+    } else {
+        if (devSection) devSection.classList.remove('hidden');
+        // We keep simple-place-input visible or hide it? 
+        // User said "all things" in dev mode. 
+        // But dev mode includes everything in the dev-section.
+        // Let's keep the simple-place-input visible in Simple, 
+        // and in Dev mode, the Dev section HAS its own Manual Entry (extracted?), 
+        // wait, I removed the Manual Entry from Dev section in HTML?
+        // No, I kept it? Let's check HTML.
+        // Actually I moved 'Manual Entry' to 'Simple Place Input'. 
+        // So in Dev mode, we should STILL see 'Simple Place Input' because that's the only way to add places now.
+        // So simplePlace stays visible in both.
+
+        // Button Styles
+        if (btnSimple) btnSimple.style.background = "#6c757d";
+        if (btnDev) btnDev.style.background = "#007bff";
+    }
+}
+
+
 // --- Audio Context Handling (Tourist) ---
 let dummyAudio = null;
 
 function updatePlayButton() {
     const playBtn = document.getElementById('play-btn');
     if (!playBtn) return;
-    
+
     if (audioCtx && audioCtx.state === 'running') {
         playBtn.textContent = "Audio Ready";
         playBtn.style.background = "#28a745";
@@ -329,7 +363,7 @@ window.toggleOfflineMode = function (cb) {
     const label = document.getElementById('offline-mode-label');
     const panel = document.getElementById('offline-mode-panel');
     const sttStatus = document.getElementById('stt-status');
-    
+
     if (offlineMode) {
         if (label) label.textContent = "Offline Mode ENABLED (Audio Only)";
         if (panel) panel.style.background = "#2a1a1a";
@@ -404,7 +438,7 @@ window.startBroadcast = async function () {
     const isMobile = isAndroid || isIOS;
     log("[Platform] UA=" + ua.substring(0, 50) + "...");
     log("[Platform] isAndroid=" + isAndroid + ", isIOS=" + isIOS + ", isMobile=" + isMobile);
-    
+
     log("Start Broadcast clicked");
     try {
         if (isBroadcasting) return;
@@ -444,6 +478,21 @@ window.startBroadcast = async function () {
         try {
             // Level 1: Standard High Quality
             let stream = null;
+
+            // SECURITY CHECK: Android Chrome requires HTTPS or special Flag
+            if (!navigator.mediaDevices) {
+                const msg = "⛔ 마이크 권한 오류 (Security Error)\n\n" +
+                    "chrome://flags 설정이 잘못되었습니다.\n" +
+                    "현재 주소가 설정에 정확히 입력되었는지 확인해주세요.\n\n" +
+                    "현재 주소: " + window.location.origin;
+                alert(msg);
+                log("CRITICAL: navigator.mediaDevices is undefined. Insecure origin?");
+                els.guideStatus.textContent = "Error: Insecure Origin (Check Flags)";
+                els.guideStatus.classList.add('status-error');
+                stopBroadcast();
+                return;
+            }
+
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
@@ -470,7 +519,7 @@ window.startBroadcast = async function () {
                 log("Microphone access granted (Basic)");
             }
             log("Microphone access granted");
-            
+
             // Debug: Check stream status
             if (localStream) {
                 const tracks = localStream.getAudioTracks();
@@ -498,14 +547,14 @@ window.startBroadcast = async function () {
 
         // Check offline mode before STT
         detectOfflineMode();
-        
+
         // STT (Speech to Text) - Guide Side
         // Skip STT in offline mode, or if audioMode is 'recorder'
         const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
         const useSTT = audioMode === 'stt' && !offlineMode;
-        
+
         log("[Audio Mode] Current mode: " + audioMode + ", useSTT=" + useSTT);
-        
+
         if (audioMode === 'recorder') {
             log("[Recorder Mode] STT disabled - using MediaRecorder for audio");
             const sttStatus = document.getElementById('stt-status');
@@ -558,7 +607,7 @@ window.startBroadcast = async function () {
                     log("[Android Debug] No speech detected - will auto-restart");
                 }
             };
-            
+
             // Android-specific: Add audio events for debugging
             recognition.onaudiostart = () => log("[Android Debug] STT Audio Capture Started");
             recognition.onspeechstart = () => log("[Android Debug] Speech Detected!");
@@ -571,11 +620,11 @@ window.startBroadcast = async function () {
                     const restartDelay = isAndroid ? 500 : 1000;
                     log("[Android Debug] STT restart in " + restartDelay + "ms, isAndroid=" + isAndroid);
                     setTimeout(() => {
-                        try { 
-                            recognition.start(); 
+                        try {
+                            recognition.start();
                             log("[Android Debug] STT restarted successfully");
-                        } catch (e) { 
-                            log("STT Restart Fail: " + e); 
+                        } catch (e) {
+                            log("STT Restart Fail: " + e);
                             // On Android, try again after another delay if first restart fails
                             if (isAndroid && isBroadcasting) {
                                 setTimeout(() => {
@@ -589,7 +638,7 @@ window.startBroadcast = async function () {
 
             recognition.onresult = (event) => {
                 log("[Android Debug] STT onresult fired, resultIndex=" + event.resultIndex + ", results.length=" + event.results.length);
-                
+
                 let interim = '';
                 let final = '';
 
@@ -625,7 +674,7 @@ window.startBroadcast = async function () {
             const isAndroid = /Android/i.test(navigator.userAgent);
             const sttStartDelay = isAndroid ? 1000 : 100;
             log("[Android Debug] Will start STT in " + sttStartDelay + "ms, isAndroid=" + isAndroid);
-            
+
             setTimeout(() => {
                 try {
                     recognition.start();
@@ -635,7 +684,7 @@ window.startBroadcast = async function () {
                     // On Android, retry with longer delay
                     if (isAndroid) {
                         setTimeout(() => {
-                            try { recognition.start(); log("STT Retry Success"); } 
+                            try { recognition.start(); log("STT Retry Success"); }
                             catch (e2) { log("STT Retry Fail: " + e2); }
                         }, 2000);
                     }
@@ -650,7 +699,7 @@ window.startBroadcast = async function () {
             await audioCtx.resume();
             log("[Mobile Fix] AudioContext state after resume: " + audioCtx.state);
         }
-        
+
         // Setup Visualizer for Guide
         setupAudioAnalysis(localStream, 'guide-meter');
 
@@ -659,7 +708,7 @@ window.startBroadcast = async function () {
         // - Recorder Mode: Use MediaRecorder for audio streaming, no STT
         // This is the user's explicit choice via the toggle
         const useRecorder = audioMode === 'recorder' || offlineMode;
-        
+
         if (useRecorder) {
             log("[Recorder Mode] Using MediaRecorder for audio streaming");
         } else {
@@ -677,7 +726,7 @@ window.startBroadcast = async function () {
             log("Gathering ICE candidates...");
             await waitForICEGathering(pc);
             socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
-            
+
             // Use MediaRecorder only in Recorder mode (not in STT mode)
             if (useRecorder) {
                 setupFallbackRecorder(localStream);
@@ -790,7 +839,7 @@ function setupFallbackRecorder(stream) {
     } else {
         log("No MIME specified, using browser default");
     }
-    
+
     // Add audioBitsPerSecond for better Android compatibility
     options.audioBitsPerSecond = 128000;
 
@@ -919,18 +968,18 @@ function createPeerConnection() {
 let ttsEnabled = false;
 function speakText(text, lang) {
     if (!('speechSynthesis' in window)) return;
-    
+
     // Stop any current speech
     window.speechSynthesis.cancel();
-    
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang === 'original' ? 'ko-KR' : lang;
-    
+
     // Adjust language code for Google TTS if needed
     if (utterance.lang === 'en') utterance.lang = 'en-US';
     if (utterance.lang === 'ja') utterance.lang = 'ja-JP';
     if (utterance.lang === 'zh-CN') utterance.lang = 'zh-CN';
-    
+
     window.speechSynthesis.speak(utterance);
 }
 
@@ -960,7 +1009,7 @@ socket.on('guide_status', (data) => {
         statusEl.textContent = "🎙️ Guide is Live (Broadcasting)";
         statusEl.style.color = "#28a745";
         statusEl.style.fontWeight = "bold";
-        
+
         if (role === 'tourist' && touristAudioActive) {
             log("Guide is broadcasting, requesting audio init and starting receiver...");
             socket.emit('request_audio_init');
@@ -1044,11 +1093,11 @@ window.selectRole = function (r) {
     log("Role selected: " + r);
     role = r;
     els.roleSel.classList.add('hidden');
-    
+
     // Get selected language for tourists
     const langSel = document.getElementById('lang-select');
     const lang = langSel ? langSel.value : 'en';
-    
+
     if (role === 'guide') {
         els.guideCtrl.classList.remove('hidden');
     } else {
@@ -1063,7 +1112,7 @@ window.selectRole = function (r) {
 }
 
 // Handle language change for tourists
-window.onLanguageChange = function(selectEl) {
+window.onLanguageChange = function (selectEl) {
     const lang = selectEl.value;
     log("Language changed to: " + lang);
     socket.emit('update_language', { language: lang });
@@ -1290,7 +1339,7 @@ socket.on('guide_ready', () => {
 // Transcript Receiver - Works for both Guide and Tourist
 socket.on('transcript', (data) => {
     log("[Android Debug] Transcript received: " + JSON.stringify(data).substring(0, 200));
-    
+
     // IMPORTANT: If we receive transcript, guide MUST be online and broadcasting
     // Update status display to ensure it's correct
     if (role === 'tourist') {
