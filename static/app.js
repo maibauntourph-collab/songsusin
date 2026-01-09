@@ -619,6 +619,13 @@ window.startBroadcast = async function () {
         }
 
         // --- Audio Transmission ---
+        // Resume AudioContext explicitly (required on mobile after user gesture)
+        if (audioCtx && audioCtx.state === 'suspended') {
+            log("[Mobile Fix] Resuming suspended AudioContext");
+            await audioCtx.resume();
+            log("[Mobile Fix] AudioContext state after resume: " + audioCtx.state);
+        }
+        
         // Setup Visualizer for Guide
         setupAudioAnalysis(localStream, 'guide-meter');
 
