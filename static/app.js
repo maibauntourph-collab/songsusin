@@ -754,7 +754,8 @@ window.startBroadcast = async function () {
                 log("[STT Mode] WebSocket Only - Audio + STT");
                 els.guideStatus.textContent = "Broadcasting (WebSocket + STT)";
             } else {
-                els.guideStatus.textContent = "Broadcasting (Recorder Only)";
+                els.guideStatus.textContent = "Broadcasting (Recorder Mode - Audio Only)";
+                updateGuideTranscriptUI("🚫 STT Disabled (Recorder Mode)", true);
             }
         }
     } catch (err) {
