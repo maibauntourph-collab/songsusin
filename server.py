@@ -794,6 +794,31 @@ if __name__ == "__main__":
     print("   2. Click 'Advanced' -> 'Proceed to...' (unsafe) to connect.")
     print("   3. Microphone permissions will now work on iOS and Android without flags!")
     print("="*50 + "\n")
+    
+    # QR Code Generation
+    try:
+        import qrcode
+        import io
+        
+        # URL for mobile
+        mobile_url = f"https://{local_ip}:5000"
+        
+        # Generate QR
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(mobile_url)
+        qr.make(fit=True)
+        
+        print(f"📱 Scan this QR Code to connect ({mobile_url}):")
+        print("")
+        # 'invert=True' is usually better for dark terminals (white on black)
+        qr.print_ascii(invert=True)
+        print("")
+        print("="*50)
+        
+    except ImportError:
+        print("ℹ️  Install 'qrcode' library to see QR code here: pip install qrcode")
+    except Exception as e:
+        print(f"⚠️  Could not generate QR code: {e}")
 
     # Run with SSL
     uvicorn.run(
