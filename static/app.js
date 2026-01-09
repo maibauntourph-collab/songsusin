@@ -1110,6 +1110,8 @@ window.stopBroadcast = function () {
 
         if (role === 'guide') {
             els.guideCtrl.classList.remove('hidden');
+            // Auto-load places for Guide
+            setTimeout(loadPlaces, 500);
         } else {
             els.touristCtrl.classList.remove('hidden');
 
@@ -1642,13 +1644,8 @@ window.stopBroadcast = function () {
     // Hook into SelectRole or just expose it
     // Better: When opening the Admin Panel or just initially.
     // Let's call it when role is selected as guide.
-    const origSelectRole = window.selectRole;
-    window.selectRole = function (r) {
-        origSelectRole(r);
-        if (r === 'guide') {
-            setTimeout(loadPlaces, 500); // Load after UI switches
-        }
-    }
+    // Auto-load on start if Guide
+    // (Moved logic into main selectRole function)
 
     // History Functions
     window.loadHistory = async function () {
