@@ -384,7 +384,7 @@ window.checkNetworkMode = function () {
     if (!el) return;
 
     if (location.hostname === 'localhost' || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.')) {
-        el.innerHTML = "📴 Local Mode (Offline)";
+        el.innerHTML = "📶 Local Network";
         el.style.background = "rgba(255, 193, 7, 0.2)"; // Yellow tint
         el.style.color = "#ffc107";
         el.style.border = "1px solid #ffc107";
@@ -704,16 +704,16 @@ window.startBroadcast = async function () {
         setupAudioAnalysis(localStream, 'guide-meter');
 
         // Audio Mode Logic:
-        // - STT Mode: Skip MediaRecorder to avoid microphone conflict, use WebRTC for audio
-        // - Recorder Mode: Use MediaRecorder for audio streaming, no STT
-        // This is the user's explicit choice via the toggle
-        const useRecorder = audioMode === 'recorder' || offlineMode;
+        // - STT Mode: Try to use BOTH WebRTC + MediaRecorder (Hybrid) for robustness
+        // - Recorder Mode: MediaRecorder only (No STT)
+        // - Offline Mode: MediaRecorder only (No STT)
 
-        if (useRecorder) {
-            log("[Recorder Mode] Using MediaRecorder for audio streaming");
-        } else {
-            log("[STT Mode] Skipping MediaRecorder, audio via WebRTC only");
-        }
+        const forceRecorder = audioMode === 'recorder' || offlineMode;
+
+        // HYBRID MODE: Even in STT mode, we try to start MediaRecorder for WebSocket fallback
+        // This fixes the "STT works but no sound" issue if WebRTC fails on LAN.
+        // Android might block two mics, so we wrap in try-catch.
+        const enableHybridAudio = true;
 
         if (useWebRTC) {
             els.guideStatus.textContent = "Broadcasting (WebRTC)...";
@@ -727,22 +727,34 @@ window.startBroadcast = async function () {
             await waitForICEGathering(pc);
             socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
 
-            // Use MediaRecorder only in Recorder mode (not in STT mode)
-            if (useRecorder) {
-                setupFallbackRecorder(localStream);
-                els.guideStatus.textContent = "Broadcasting (WebRTC + Recorder)";
-            } else {
+            // ALWAYS try to set up fallback recorder (Hybrid)
+            try {
+                if (forceRecorder || enableHybridAudio) {
+                    setupFallbackRecorder(localStream);
+                    if (audioMode === 'stt' && !offlineMode) {
+                        els.guideStatus.textContent = "Broadcasting (Hybrid: WebRTC + STT + WS)";
+                        log("[Hybrid] Attempting to run MediaRecorder alongside STT");
+                    } else {
+                        els.guideStatus.textContent = "Broadcasting (WebRTC + Recorder)";
+                    }
+                }
+            } catch (e) {
+                log("[Hybrid] MediaRecorder failed (likely Mic conflict with STT): " + e);
+                // If hybrid failed, we rely on WebRTC only
                 els.guideStatus.textContent = "Broadcasting (WebRTC + STT)";
             }
+
         } else {
-            // WebSocket-only mode (non-WebRTC browsers)
+            // WebSocket-only mode
             els.guideStatus.textContent = "Broadcasting (WebSocket)...";
-            if (useRecorder) {
-                setupFallbackRecorder(localStream);
-                els.guideStatus.textContent = "Broadcasting (Recorder Mode)";
+            // Must use recorder here
+            setupFallbackRecorder(localStream);
+
+            if (audioMode === 'stt' && !offlineMode) {
+                log("[STT Mode] WebSocket Only - Audio + STT");
+                els.guideStatus.textContent = "Broadcasting (WebSocket + STT)";
             } else {
-                log("[STT Mode] WARNING: No audio transmission without WebRTC!");
-                els.guideStatus.textContent = "STT Only (No Audio Stream)";
+                els.guideStatus.textContent = "Broadcasting (Recorder Only)";
             }
         }
     } catch (err) {
