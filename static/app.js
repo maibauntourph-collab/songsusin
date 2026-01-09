@@ -708,20 +708,30 @@ window.startBroadcast = async function () {
         // - Recorder Mode: MediaRecorder Only (Audio Only, No STT)
         // NO Hybrid Mode (avoids mic conflicts)
 
-        if (useWebRTC) {
-            els.guideStatus.textContent = "Broadcasting (STT Mode)...";
-            createPeerConnection();
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        // Audio Mode Logic:
+        // - STT Mode: WebRTC Only
+        // - Recorder Mode: MediaRecorder Only
 
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
+        try {
+            if (useWebRTC) {
+                els.guideStatus.textContent = "Broadcasting (STT Mode)...";
+                createPeerConnection();
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-            log("Gathering ICE candidates...");
-            await waitForICEGathering(pc);
-            socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
 
-            // STRICTLY WebRTC Only. No fallback recorder here to prevent Android crash.
-            log("[STT Mode] WebRTC active. Hybrid recorder disabled.");
+                log("Gathering ICE candidates...");
+                await waitForICEGathering(pc);
+                socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
+
+                log("[STT Mode] WebRTC active.");
+            } else {
+                // WebSocket-only mode (Recorder Mode)
+                els.guideStatus.textContent = "Broadcasting (Audio Only)...";
+                setupFallbackRecorder(localStream);
+                updateGuideTranscriptUI("🚫 STT Disabled (Recorder Mode)", true);
+            }
         } catch (err) {
             log("Error starting broadcast: " + err);
             stopBroadcast();
@@ -1106,9 +1116,15 @@ window.stopBroadcast = function () {
             els.guideCtrl.classList.remove('hidden');
         } else {
             els.touristCtrl.classList.remove('hidden');
+
+            // DIRECT LISTEN: Use this click as the gesture to unlock AudioContext
             initAudioContext();
             touristAudioActive = true;
-            els.touristStatus.textContent = "Waiting for Guide...";
+
+            // Immediate feedback "Connected" instead of "Waiting..."
+            els.touristStatus.textContent = "Connected. Listening...";
+            els.touristStatus.style.color = "#28a745";
+
             // Ensure we try to connect if guide is already live
             socket.emit('request_guide_status');
         }
