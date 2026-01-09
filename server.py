@@ -662,10 +662,13 @@ async def get_qr_image():
         import io
         from fastapi.responses import Response
         
-        # Determine Local IP (Same logic as startup)
-        hostname = socket.gethostname()
+        # Robust IP Detection
         try:
-            local_ip = socket.gethostbyname(hostname)
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            # Doesn't actually connect to 8.8.8.8, just determines the route
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
         except:
             local_ip = "127.0.0.1"
             
@@ -684,6 +687,12 @@ async def get_qr_image():
         img_byte_arr.seek(0)
         
         return Response(content=img_byte_arr.getvalue(), media_type="image/png")
+        
+    except ImportError as e:
+        logger.error(f"QR Gen Error (Missing Libraries): {e}")
+        # Return a 1x1 pixel or explicit error text image if possible, 
+        # but for now just JSON error so console shows it.
+        return {"status": "error", "message": "Missing 'pillow' library. Run: pip install pillow"}
         
     except Exception as e:
         logger.error(f"QR Gen Error: {e}")
@@ -770,12 +779,12 @@ if __name__ == "__main__":
     # Generate SSL certs for HTTPS
     generate_self_signed_cert()
 
-    # Get Local IP
-    hostname = socket.gethostname()
+    # Get Local IP (Robust Method)
     try:
-        local_ip = socket.gethostbyname(hostname)
-        # Try to find the most likely LAN IP (often starts with 192. or 10.)
-        # This is a simple heuristic; socket.gethostbyname might return localhost or VPN IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
     except:
         local_ip = "127.0.0.1"
 
