@@ -143,37 +143,33 @@ function log(msg) {
 
 // Initial selectRole removed. Use the merged one below.
 
-// --- Guide View Mode Logic ---
+//    // Guide View Mode Toggle
 window.setGuideViewMode = function (mode) {
+    const simpleBtn = document.getElementById('btn-mode-simple');
+    const devBtn = document.getElementById('btn-mode-dev');
+    const qrBtn = document.getElementById('btn-mode-qr');
+
+    const simpleSection = document.getElementById('simple-place-input');
     const devSection = document.getElementById('guide-dev-section');
-    const simplePlace = document.getElementById('simple-place-input');
-    const btnSimple = document.getElementById('btn-mode-simple');
-    const btnDev = document.getElementById('btn-mode-dev');
+    const qrSection = document.getElementById('guide-qr-section');
 
-    if (mode === 'simple') {
-        if (devSection) devSection.classList.add('hidden');
-        if (simplePlace) simplePlace.classList.remove('hidden');
+    // Reset Buttons
+    simpleBtn.style.background = "#6c757d";
+    devBtn.style.background = "#6c757d";
+    if (qrBtn) qrBtn.style.background = "#6c757d";
 
-        // Button Styles
-        if (btnSimple) btnSimple.style.background = "#007bff"; // Active Blue
-        if (btnDev) btnDev.style.background = "#6c757d"; // Inactive Gray
-    } else {
-        if (devSection) devSection.classList.remove('hidden');
-        // We keep simple-place-input visible or hide it? 
-        // User said "all things" in dev mode. 
-        // But dev mode includes everything in the dev-section.
-        // Let's keep the simple-place-input visible in Simple, 
-        // and in Dev mode, the Dev section HAS its own Manual Entry (extracted?), 
-        // wait, I removed the Manual Entry from Dev section in HTML?
-        // No, I kept it? Let's check HTML.
-        // Actually I moved 'Manual Entry' to 'Simple Place Input'. 
-        // So in Dev mode, we should STILL see 'Simple Place Input' because that's the only way to add places now.
-        // So simplePlace stays visible in both.
+    // Hide All Sections first
+    if (simpleSection) simpleSection.classList.add('hidden');
+    if (devSection) devSection.classList.add('hidden');
+    // No, I kept it? Let's check HTML.
+    // Actually I moved 'Manual Entry' to 'Simple Place Input'. 
+    // So in Dev mode, we should STILL see 'Simple Place Input' because that's the only way to add places now.
+    // So simplePlace stays visible in both.
 
-        // Button Styles
-        if (btnSimple) btnSimple.style.background = "#6c757d";
-        if (btnDev) btnDev.style.background = "#007bff";
-    }
+    // Button Styles
+    if (btnSimple) btnSimple.style.background = "#6c757d";
+    if (btnDev) btnDev.style.background = "#007bff";
+}
 }
 
 

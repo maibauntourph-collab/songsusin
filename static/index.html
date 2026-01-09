@@ -239,8 +239,24 @@
         <div style="margin-bottom: 20px; display: flex; justify-content: center; gap: 10px;">
             <button onclick="setGuideViewMode('simple')" id="btn-mode-simple"
                 style="padding: 8px 15px; width: auto; font-size: 0.9rem; background: #007bff; color: white;">Simple</button>
+            <button onclick="setGuideViewMode('qr')" id="btn-mode-qr"
+                style="padding: 8px 15px; width: auto; font-size: 0.9rem; background: #17a2b8; color: white;">📱 QR
+                Code</button>
             <button onclick="setGuideViewMode('dev')" id="btn-mode-dev"
                 style="padding: 8px 15px; width: auto; font-size: 0.9rem; background: #6c757d; color: white;">Developer</button>
+        </div>
+
+        <!-- QR Code / Connection Info Panel -->
+        <div id="guide-qr-section" class="hidden"
+            style="text-align: center; background: #fff; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 2px solid #17a2b8;">
+            <h3>📱 Connect Tourists</h3>
+            <p>Scan to join:</p>
+            <img src="/qr" alt="Server QR Code" style="width: 200px; height: 200px; border: 4px solid black;">
+            <p
+                style="font-family: monospace; font-size: 1.1rem; background: #f0f0f0; padding: 10px; display: inline-block; border-radius: 5px; margin-top: 10px;">
+                <!-- We will update this text via JS if needed, but QR contains it -->
+                Scan or visit URL
+            </p>
         </div>
 
         <!-- Common Status Area (Visible in both) -->

@@ -653,6 +653,42 @@ async def restart_server():
     os.execv(python_exe, [python_exe] + sys.argv)
     return {"status": "restarting"}
 
+@app.get("/qr")
+async def get_qr_image():
+    """Returns the QR code of the server's mobile access URL as a PNG image"""
+    try:
+        import qrcode
+        import socket
+        import io
+        from fastapi.responses import Response
+        
+        # Determine Local IP (Same logic as startup)
+        hostname = socket.gethostname()
+        try:
+            local_ip = socket.gethostbyname(hostname)
+        except:
+            local_ip = "127.0.0.1"
+            
+        mobile_url = f"https://{local_ip}:5000"
+        
+        # Generate QR
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(mobile_url)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Save to BytesIO
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='PNG')
+        img_byte_arr.seek(0)
+        
+        return Response(content=img_byte_arr.getvalue(), media_type="image/png")
+        
+    except Exception as e:
+        logger.error(f"QR Gen Error: {e}")
+        return {"status": "error", "message": "Could not generate QR"}
+
 # --- Automatic SSL Certificate Generation ---
 def generate_self_signed_cert(cert_file="cert.pem", key_file="key.pem"):
     """
