@@ -13,7 +13,7 @@
 아래 명령어를 **복사(Copy)** 해서 Termux 화면에 **붙여넣기(Paste)** 하고 엔터(Enter)를 누르세요.
 
 ```bash
-pkg install -y git && git clone https://github.com/maibauntourph-collab/songsusin.git && cd songsusin && bash setup_termux.sh
+pkg install -y git && ( [ -d "songsusin" ] || git clone https://github.com/maibauntourph-collab/songsusin.git ) && cd songsusin && git pull && bash setup_termux.sh
 ```
 
 ## 3. 설치 진행 과정
