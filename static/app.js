@@ -713,7 +713,10 @@ window.startBroadcast = async function () {
         // HYBRID MODE: Even in STT mode, we try to start MediaRecorder for WebSocket fallback
         // This fixes the "STT works but no sound" issue if WebRTC fails on LAN.
         // Android might block two mics, so we wrap in try-catch.
-        const enableHybridAudio = true;
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        // CRITICAL: Android CANNOT do both STT + MediaRecorder. It crashes STT.
+        // So we strictly DISABLE Hybrid on Android.
+        const enableHybridAudio = !isAndroid;
 
         if (useWebRTC) {
             els.guideStatus.textContent = "Broadcasting (WebRTC)...";
@@ -735,7 +738,17 @@ window.startBroadcast = async function () {
                         els.guideStatus.textContent = "Broadcasting (Hybrid: WebRTC + STT + WS)";
                         log("[Hybrid] Attempting to run MediaRecorder alongside STT");
                     } else {
-                        els.guideStatus.textContent = "Broadcasting (WebRTC + Recorder)";
+                        els.guideStatus.textContent = "Broadcasting (Recorder Mode - Audio Only)";
+                        // Clear the "Listening..." default text
+                        updateGuideTranscriptUI("🚫 STT Disabled (Recorder Mode)", true);
+                    }
+                } else {
+                    // Android STT Mode case: Hybrid disabled
+                    if (audioMode === 'stt' && !offlineMode) {
+                        log("[Android] Hybrid Audio Disabled to protect STT");
+                        els.guideStatus.textContent = "Broadcasting (STT Mode - WebRTC Only)";
+                        // Warn user visually
+                        updateGuideTranscriptUI("ℹ️ Android STT Mode: Audio relies on WebRTC only (Hybrid disabled)", true);
                     }
                 }
             } catch (e) {
