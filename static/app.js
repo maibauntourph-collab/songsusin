@@ -855,7 +855,7 @@ function setupFallbackRecorder(stream) {
         log("MediaRecorder created successfully. Actual mimeType: " + recorder.mimeType);
 
         recorder.ondataavailable = e => {
-            if (e.data.size > 0) {
+            if (e.data.size > 10) { // Filter out empty/tiny headers (~1 byte artifacts)
                 // Log only occasionally to avoid spam, but log first few
                 if (txBytes === 0) log("Recorder produced first data: " + e.data.size + " bytes");
 
@@ -868,8 +868,8 @@ function setupFallbackRecorder(stream) {
                     els.guideStatus.textContent = "Connection Lost! Reconnecting...";
                     els.guideStatus.style.color = "red";
                 }
-            } else {
-                log("Recorder produced empty data (size=0)");
+            } else if (e.data.size > 0) {
+                log("Recorder produced tiny data (ignored): " + e.data.size + " bytes");
             }
         };
 
@@ -883,8 +883,8 @@ function setupFallbackRecorder(stream) {
             els.guideStatus.textContent = "Recorder Error: " + e.error;
         };
 
-        // Try 50ms for ultra-low latency
-        recorder.start(50);
+        // Increase timeslice to 250ms for better Android stability
+        recorder.start(250);
         log("Fallback Audio (WebSocket) Setup OK");
 
     } catch (e) {
