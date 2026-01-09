@@ -96,7 +96,8 @@
     </div>
 
     <script>
-        const touristCount = 60;
+        const urlParams = new URLSearchParams(window.location.search);
+        const touristCount = parseInt(urlParams.get('count')) || 60;
         const grid = document.getElementById('tourist-grid');
         // Full list of 100+ languages
         const languages = [
