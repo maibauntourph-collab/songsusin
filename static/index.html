@@ -348,6 +348,20 @@
                     </label>
                 </div>
 
+                <!-- Recorder Timeslice Control (New) -->
+                <div
+                    style="background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #444;">
+                    <h4 style="margin-top:0;">⏱️ Recorder Interval (ms)</h4>
+                    <label style="color: #fff; display: block; margin-bottom: 10px;">
+                        Current: <span id="timeslice-display" style="font-weight:bold; color:#ffc107;">1000</span> ms
+                    </label>
+                    <input type="range" id="timeslice-control" min="100" max="3000" step="100" value="1000"
+                        style="width: 100%;" oninput="updateTimesliceDisplay(this.value)">
+                    <div style="font-size: 0.8rem; color: #888; margin-top: 5px;">
+                        Lower = Low Latency<br>Higher = Better Stability (Android)
+                    </div>
+                </div>
+
                 <!-- Excel Upload -->
                 <div style="background: #2a2a2a; padding: 15px; border-radius: 8px;">
                     <h4>Excel Upload</h4>

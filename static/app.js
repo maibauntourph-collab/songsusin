@@ -182,6 +182,12 @@ function setupAudioAnalysis(stream, meterId) {
     }
 }
 
+// Timeslice UI Helper
+window.updateTimesliceDisplay = function (val) {
+    const display = document.getElementById('timeslice-display');
+    if (display) display.textContent = val;
+}
+
 
 // Config
 const rtcConfig = {
@@ -958,9 +964,16 @@ function setupFallbackRecorder(stream) {
             els.guideStatus.textContent = "Recorder Error: " + e.error;
         };
 
-        // Increase timeslice to 250ms for better Android stability
-        recorder.start(250);
-        log("Fallback Audio (WebSocket) Setup OK");
+        // Dynamic Timeslice from UI
+        let timeslice = 1000;
+        const tsInput = document.getElementById('timeslice-control');
+        if (tsInput) {
+            timeslice = parseInt(tsInput.value, 10);
+            log("Using configured timeslice: " + timeslice + "ms");
+        }
+
+        recorder.start(timeslice);
+        log("Fallback Audio (WebSocket) Setup OK (timeslice=" + timeslice + "ms)");
 
     } catch (e) {
         log("Fallback Setup Failed: " + e);
