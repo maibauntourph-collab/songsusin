@@ -25,6 +25,7 @@ let audioMode = 'stt'; // Default to STT mode
 
 window.setAudioMode = function (mode) {
     audioMode = mode;
+    window.audioMode = mode; // Force global property sync
     log("[Audio Mode] Set to: " + mode);
 
     // UI Update
@@ -654,8 +655,12 @@ window.startBroadcast = async function () {
             recognition.onspeechstart = () => log("[Android Debug] Speech Detected!");
             recognition.onspeechend = () => log("[Android Debug] Speech Ended");
             recognition.onend = () => {
-                log("STT Engine: Ended (Will Auto-restart)");
-                if (isBroadcasting && audioMode === 'stt') {
+                log("STT Engine: Ended (Will Auto-restart). Current audioMode=" + audioMode + ", isBroadcasting=" + isBroadcasting);
+                // CRITICAL: Ensure we rely on window.audioMode if for some reason local var is stale (though it shouldn't be)
+                const currentMode = window.audioMode || audioMode;
+                log("Deep Debug: window.audioMode=" + window.audioMode + ", local var=" + audioMode);
+
+                if (isBroadcasting && currentMode === 'stt') {
                     // Android Chrome needs longer delay for STT restart
                     const isAndroid = /Android/i.test(navigator.userAgent);
                     const restartDelay = isAndroid ? 500 : 1000;
