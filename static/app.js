@@ -940,13 +940,17 @@ function createPeerConnection() {
         if (role === 'tourist') {
             els.touristStatus.textContent = "Receiving Audio Stream...";
             const stream = event.streams[0];
-            const audio = new Audio();
-            audio.srcObject = stream;
-            audio.autoplay = true;
-            audio.playsInline = true;
-            audio.controls = true; // Show controls to allow manual play if needed
-            audio.style.marginTop = "20px";
-            document.body.appendChild(audio);
+            webrtcAudioElement = new Audio(); // Assign to global
+            webrtcAudioElement.srcObject = stream;
+            webrtcAudioElement.autoplay = true;
+            webrtcAudioElement.playsInline = true;
+            webrtcAudioElement.controls = true; // Show controls to allow manual play if needed
+            webrtcAudioElement.style.marginTop = "20px";
+
+            // Respect current mode
+            if (ttsEnabled) webrtcAudioElement.muted = true;
+
+            document.body.appendChild(webrtcAudioElement);
 
             // Setup Visualizer for Tourist
             setupAudioAnalysis(stream, 'tourist-meter');
@@ -977,17 +981,19 @@ function createPeerConnection() {
 // --- Signaling ---
 // NOTE: Transcript handler moved to unified handler below (line ~1134)
 
-let ttsEnabled = false;
-function speakText(text, lang) {
-    if (!('speechSynthesis' in window)) return;
+let ttsEnabled = false; // Now represents "AI Voice Mode"
+let webrtcAudioElement = null; // Global reference for muting
 
-    // Stop any current speech
+function speakText(text, lang) {
+    if (!('speechSynthesis' in window) || !ttsEnabled) return; // Only speak if enabled
+
+    // Stop any current speech (debounced?)
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang === 'original' ? 'ko-KR' : lang;
 
-    // Adjust language code for Google TTS if needed
+    // Adjust language code for Google TTS
     if (utterance.lang === 'en') utterance.lang = 'en-US';
     if (utterance.lang === 'ja') utterance.lang = 'ja-JP';
     if (utterance.lang === 'zh-CN') utterance.lang = 'zh-CN';
@@ -998,15 +1004,36 @@ function speakText(text, lang) {
 document.addEventListener('DOMContentLoaded', () => {
     const ttsBtn = document.getElementById('tts-btn');
     if (ttsBtn) {
+        // Set initial state UI
+        ttsBtn.textContent = "🎧 Live Voice";
+        ttsBtn.style.background = "#007bff"; // Blue for Live
+
         ttsBtn.onclick = () => {
             ttsEnabled = !ttsEnabled;
-            ttsBtn.textContent = "Sound: " + (ttsEnabled ? "ON" : "OFF");
-            ttsBtn.style.background = ttsEnabled ? "#28a745" : "#444";
+
             if (ttsEnabled) {
-                // Resume AudioContext as well
-                resumeAudioContext();
+                // Switch to AI Mode
+                ttsBtn.textContent = "🤖 AI Voice";
+                ttsBtn.style.background = "#e83e8c"; // Pink/Purple for AI
+
+                // Mute Live Audio
+                if (webrtcAudioElement) webrtcAudioElement.muted = true;
+                if (fallbackAudioElement) fallbackAudioElement.muted = true;
+
                 // Test speech
-                speakText("TTS Enabled", "en");
+                speakText("AI Voice Enabled", "en");
+                log("[Audio] Switched to AI Voice (Live Muted)");
+            } else {
+                // Switch to Live Mode
+                ttsBtn.textContent = "🎧 Live Voice";
+                ttsBtn.style.background = "#007bff";
+
+                // Unmute Live Audio
+                if (webrtcAudioElement) webrtcAudioElement.muted = false;
+                if (fallbackAudioElement) fallbackAudioElement.muted = false;
+
+                window.speechSynthesis.cancel();
+                log("[Audio] Switched to Live Voice (TTS Off)");
             }
         };
     }
@@ -1202,6 +1229,9 @@ function initMediaSourceFallback() {
     fallbackAudioElement.controls = true;
     fallbackAudioElement.style.marginTop = '20px';
     fallbackAudioElement.style.width = '100%';
+
+    // Respect current mode
+    if (ttsEnabled) fallbackAudioElement.muted = true;
 
     const container = document.getElementById('tourist-controls');
     if (container) container.appendChild(fallbackAudioElement);
@@ -1431,8 +1461,9 @@ socket.on('transcript', async (data) => {
     if (role === 'tourist' && touristBox) {
         updateBox(touristBox, displayText, data.isFinal);
 
-        if (data.isFinal && ttsBtn && ttsBtn.textContent.includes("ON")) {
+        if (data.isFinal && ttsEnabled) {
             const utterance = new SpeechSynthesisUtterance(displayText);
+            // ... (language logic)
             if (langInfo === 'en') utterance.lang = 'en-US';
             else if (langInfo === 'ja') utterance.lang = 'ja-JP';
             else if (langInfo === 'zh-CN') utterance.lang = 'zh-CN';
@@ -1446,20 +1477,8 @@ socket.on('transcript', async (data) => {
     }
 });
 
-// TTS Toggle
-const ttsBtn = document.getElementById('tts-btn');
-if (ttsBtn) {
-    ttsBtn.onclick = () => {
-        if (ttsBtn.textContent.includes("OFF")) {
-            ttsBtn.textContent = "Sound: ON";
-            ttsBtn.style.background = "#28a745";
-        } else {
-            ttsBtn.textContent = "Sound: OFF";
-            ttsBtn.style.background = "#444";
-            window.speechSynthesis.cancel();
-        }
-    };
-}
+// TTS Toggle (Moved to DOMContentLoaded above)
+// const ttsBtn = document.getElementById('tts-btn'); ... REMOVED
 
 // Background Audio Fix (Wake Lock for Tourist)
 async function enableBackgroundMode() {
