@@ -57,13 +57,19 @@ function updateOfflineModeUI() {
 // Audio Visualizer Logic
 function setupAudioAnalysis(stream, meterId) {
     try {
+        log("[Visualizer] Setting up for meter: " + meterId);
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (audioCtx.state === 'suspended') {
+            log("[Visualizer] AudioContext was suspended, resuming...");
+            audioCtx.resume();
+        }
+        log("[Visualizer] AudioContext state: " + audioCtx.state);
 
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
         const source = audioCtx.createMediaStreamSource(stream);
         source.connect(analyser);
+        log("[Visualizer] Analyser connected to stream");
 
         // If it's a remote stream (Tourist), we also need to connect to destination to hear it!
         // But 'audio' element in createPeerConnection handles playback. 
@@ -375,6 +381,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.startBroadcast = async function () {
+    // Detect platform for debugging
+    const ua = navigator.userAgent;
+    const isAndroid = /Android/i.test(ua);
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+    const isMobile = isAndroid || isIOS;
+    log("[Platform] UA=" + ua.substring(0, 50) + "...");
+    log("[Platform] isAndroid=" + isAndroid + ", isIOS=" + isIOS + ", isMobile=" + isMobile);
+    
     log("Start Broadcast clicked");
     try {
         if (isBroadcasting) return;
@@ -440,6 +454,17 @@ window.startBroadcast = async function () {
                 log("Microphone access granted (Basic)");
             }
             log("Microphone access granted");
+            
+            // Debug: Check stream status
+            if (localStream) {
+                const tracks = localStream.getAudioTracks();
+                log("[Mic Debug] Audio tracks count: " + tracks.length);
+                if (tracks.length > 0) {
+                    const track = tracks[0];
+                    log("[Mic Debug] Track enabled: " + track.enabled + ", muted: " + track.muted + ", readyState: " + track.readyState);
+                    log("[Mic Debug] Track settings: " + JSON.stringify(track.getSettings()));
+                }
+            }
         } catch (e) {
             log("Microphone access denied: " + e);
             els.guideStatus.textContent = "Error: Microphone Denied";
