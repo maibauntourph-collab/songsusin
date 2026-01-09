@@ -236,6 +236,7 @@
         <h1>Guide Mode</h1>
         <div class="status" id="guide-status">Ready</div>
         <div class="data-counter" id="guide-counter">TX: 0 KB</div>
+        <div id="stt-status" style="font-size: 0.85rem; color: #888; margin: 5px 0; padding: 5px; background: #333; border-radius: 4px;">🎤 STT: Waiting to start...</div>
         <!-- Guide Meter --><span class="meter-label">Microphone Level:</span>
         <div class="meter-container">
             <div class="meter-fill" id="guide-meter"></div>
@@ -260,6 +261,44 @@
         <div id="guide-admin-panel" style="margin-top: 30px; border-top: 1px solid #444; padding-top: 20px;">
             <h3>🛠️ Guide Admin (Register Info)</h3>
             <h3>🛠️ Guide Admin (Register Info)</h3>
+
+            <!-- Audio Mode Selection (MediaRecorder vs STT) -->
+            <div id="audio-mode-panel"
+                style="background: #2a1a3a; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #9b59b6;">
+                <h4 style="margin-top:0; color: #9b59b6;">🎙️ Audio Mode (Android Fix)</h4>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label style="color: #fff; display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; background: #3a2a4a; border-radius: 6px;">
+                        <input type="radio" name="audio-mode" value="stt" id="audio-mode-stt" checked onchange="setAudioMode('stt')">
+                        <div>
+                            <strong>📝 STT Mode (Speech-to-Text)</strong>
+                            <div style="font-size: 0.8rem; color: #aaa;">Real-time transcription + translation. Audio via WebRTC only.</div>
+                        </div>
+                    </label>
+                    <label style="color: #fff; display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; background: #3a2a4a; border-radius: 6px;">
+                        <input type="radio" name="audio-mode" value="recorder" id="audio-mode-recorder" onchange="setAudioMode('recorder')">
+                        <div>
+                            <strong>🔊 Recorder Mode (Audio Stream)</strong>
+                            <div style="font-size: 0.8rem; color: #aaa;">MediaRecorder audio streaming. No text transcription.</div>
+                        </div>
+                    </label>
+                </div>
+                <div style="color: #ffc107; font-size: 0.75rem; margin-top: 10px; padding: 5px; background: rgba(255,193,7,0.1); border-radius: 4px;">
+                    ⚠️ Android: MediaRecorder blocks STT. Choose one mode only.
+                </div>
+            </div>
+
+            <!-- Offline Mode Toggle -->
+            <div id="offline-mode-panel"
+                style="background: #1a3a1a; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #28a745;">
+                <h4 style="margin-top:0; color: #28a745;">📡 Offline/Local Mode</h4>
+                <label style="color: #fff; display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="offline-mode-toggle" onchange="toggleOfflineMode(this)">
+                    <span id="offline-mode-label">Enable Offline Mode (Audio Only, No STT)</span>
+                </label>
+                <div style="color: #aaa; font-size: 0.8rem; margin-top: 5px;">
+                    Use when there's no internet connection. Audio will stream directly without speech-to-text or translation.
+                </div>
+            </div>
 
             <!-- Transmission Mode Toggle -->
             <div
@@ -341,7 +380,7 @@
         </div>
         <!-- Translation Controls -->
         <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
-            <select id="lang-select"
+            <select id="lang-select" onchange="onLanguageChange(this)"
                 style="padding: 10px; border-radius: 5px; background: #333; color: white; border: 1px solid #555; max-width: 150px;">
                 <option value="original">Original (No Trans)</option>
 

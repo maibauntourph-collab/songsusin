@@ -11,16 +11,81 @@ let recognition = null;
 // Tourist audio is always active once role is selected
 let touristAudioActive = false;
 
+// Offline Mode: For local/intranet environments without internet
+// In offline mode, STT/translation is disabled, only audio streaming works
+let offlineMode = false;
+
+// Audio Mode: 'stt' for speech-to-text, 'recorder' for MediaRecorder audio streaming
+// On Android, these conflict - user must choose one
+let audioMode = 'stt'; // Default to STT mode
+
+window.setAudioMode = function(mode) {
+    audioMode = mode;
+    log("[Audio Mode] Set to: " + mode);
+    
+    const sttStatus = document.getElementById('stt-status');
+    if (mode === 'stt') {
+        if (sttStatus) sttStatus.textContent = "🎤 STT Mode: Speech-to-text enabled";
+    } else {
+        if (sttStatus) sttStatus.textContent = "🔊 Recorder Mode: Audio streaming only (No STT)";
+    }
+}
+
+function detectOfflineMode() {
+    // Check if we're in an offline/local environment
+    const isLocalIP = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|localhost|127\.0\.0\.1)/.test(location.hostname);
+    const isOffline = !navigator.onLine;
+    
+    if (isOffline || (isLocalIP && !navigator.onLine)) {
+        offlineMode = true;
+        log("[Offline Mode] Detected offline/local environment - STT disabled, audio-only mode");
+        return true;
+    }
+    return false;
+}
+
+// Listen for online/offline changes
+window.addEventListener('online', () => {
+    log("[Network] Back online");
+    offlineMode = false;
+    updateOfflineModeUI();
+});
+
+window.addEventListener('offline', () => {
+    log("[Network] Gone offline");
+    offlineMode = true;
+    updateOfflineModeUI();
+});
+
+function updateOfflineModeUI() {
+    const sttStatus = document.getElementById('stt-status');
+    const offlineIndicator = document.getElementById('offline-indicator');
+    
+    if (offlineMode) {
+        if (sttStatus) sttStatus.textContent = "⚠️ Offline Mode (Audio Only)";
+        if (offlineIndicator) offlineIndicator.classList.remove('hidden');
+    } else {
+        if (sttStatus) sttStatus.textContent = "";
+        if (offlineIndicator) offlineIndicator.classList.add('hidden');
+    }
+}
+
 // Audio Visualizer Logic
 function setupAudioAnalysis(stream, meterId) {
     try {
+        log("[Visualizer] Setting up for meter: " + meterId);
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (audioCtx.state === 'suspended') {
+            log("[Visualizer] AudioContext was suspended, resuming...");
+            audioCtx.resume();
+        }
+        log("[Visualizer] AudioContext state: " + audioCtx.state);
 
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
         const source = audioCtx.createMediaStreamSource(stream);
         source.connect(analyser);
+        log("[Visualizer] Analyser connected to stream");
 
         // If it's a remote stream (Tourist), we also need to connect to destination to hear it!
         // But 'audio' element in createPeerConnection handles playback. 
@@ -80,6 +145,22 @@ function log(msg) {
 
 // --- Audio Context Handling (Tourist) ---
 let dummyAudio = null;
+
+function updatePlayButton() {
+    const playBtn = document.getElementById('play-btn');
+    if (!playBtn) return;
+    
+    if (audioCtx && audioCtx.state === 'running') {
+        playBtn.textContent = "Audio Ready";
+        playBtn.style.background = "#28a745";
+    } else if (audioCtx && audioCtx.state === 'suspended') {
+        playBtn.textContent = "Tap to Enable Audio";
+        playBtn.style.background = "#007bff";
+    } else {
+        playBtn.textContent = "Enable Audio";
+        playBtn.style.background = "#6c757d";
+    }
+}
 
 function initAudioContext() {
     try {
@@ -243,6 +324,27 @@ window.toggleTransmissionMode = function (cb) {
     log("Transmission Mode changed to: " + (useWebRTC ? "Auto" : "Manual"));
 }
 
+window.toggleOfflineMode = function (cb) {
+    offlineMode = cb.checked;
+    const label = document.getElementById('offline-mode-label');
+    const panel = document.getElementById('offline-mode-panel');
+    const sttStatus = document.getElementById('stt-status');
+    
+    if (offlineMode) {
+        if (label) label.textContent = "Offline Mode ENABLED (Audio Only)";
+        if (panel) panel.style.background = "#2a1a1a";
+        if (panel) panel.style.borderColor = "#dc3545";
+        if (sttStatus) sttStatus.textContent = "📡 Offline Mode: Audio streaming only (No STT/Translation)";
+        log("[Offline Mode] ENABLED - STT and translation disabled");
+    } else {
+        if (label) label.textContent = "Enable Offline Mode (Audio Only, No STT)";
+        if (panel) panel.style.background = "#1a3a1a";
+        if (panel) panel.style.borderColor = "#28a745";
+        if (sttStatus) sttStatus.textContent = "🎤 STT: Waiting to start...";
+        log("[Offline Mode] DISABLED - STT and translation enabled");
+    }
+}
+
 window.checkNetworkMode = function () {
     const el = document.getElementById('network-mode');
     if (!el) return;
@@ -295,6 +397,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.startBroadcast = async function () {
+    // Detect platform for debugging
+    const ua = navigator.userAgent;
+    const isAndroid = /Android/i.test(ua);
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+    const isMobile = isAndroid || isIOS;
+    log("[Platform] UA=" + ua.substring(0, 50) + "...");
+    log("[Platform] isAndroid=" + isAndroid + ", isIOS=" + isIOS + ", isMobile=" + isMobile);
+    
     log("Start Broadcast clicked");
     try {
         if (isBroadcasting) return;
@@ -314,6 +424,7 @@ window.startBroadcast = async function () {
         isBroadcasting = true;
 
         socket.emit('reset_audio_session');
+        socket.emit('start_broadcast');
 
         // UI Updates
         els.guideStatus.textContent = "Initializing...";
@@ -359,6 +470,17 @@ window.startBroadcast = async function () {
                 log("Microphone access granted (Basic)");
             }
             log("Microphone access granted");
+            
+            // Debug: Check stream status
+            if (localStream) {
+                const tracks = localStream.getAudioTracks();
+                log("[Mic Debug] Audio tracks count: " + tracks.length);
+                if (tracks.length > 0) {
+                    const track = tracks[0];
+                    log("[Mic Debug] Track enabled: " + track.enabled + ", muted: " + track.muted + ", readyState: " + track.readyState);
+                    log("[Mic Debug] Track settings: " + JSON.stringify(track.getSettings()));
+                }
+            }
         } catch (e) {
             log("Microphone access denied: " + e);
             els.guideStatus.textContent = "Error: Microphone Denied";
@@ -367,53 +489,107 @@ window.startBroadcast = async function () {
             return;
         }
 
-        // HTTPS Check for Mobile
+        // HTTPS Check for Mobile (Log only, no alert)
         if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
             const msg = "⚠️ STT usually requires HTTPS on mobile. Text might not appear via HTTP IP.";
             log(msg);
-            alert(msg);
+            // alert(msg); // Removed - too noisy
         }
 
+        // Check offline mode before STT
+        detectOfflineMode();
+        
         // STT (Speech to Text) - Guide Side
-        if (!('webkitSpeechRecognition' in window)) {
-            alert("⚠️ Warning: This browser does not support AI Speech Recognition.\n\nGuide functionality requires Google Chrome (Android/PC).\niPhone (Safari) is NOT supported for STT.");
+        // Skip STT in offline mode, or if audioMode is 'recorder'
+        const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const useSTT = audioMode === 'stt' && !offlineMode;
+        
+        log("[Audio Mode] Current mode: " + audioMode + ", useSTT=" + useSTT);
+        
+        if (audioMode === 'recorder') {
+            log("[Recorder Mode] STT disabled - using MediaRecorder for audio");
+            const sttStatus = document.getElementById('stt-status');
+            if (sttStatus) sttStatus.textContent = "🔊 Recorder Mode: Audio streaming (No STT)";
+            updateGuideTranscriptUI("🔊 Recorder Mode - Audio streaming without transcription", false);
+        } else if (offlineMode) {
+            log("[Offline Mode] STT disabled - audio only streaming");
+            const sttStatus = document.getElementById('stt-status');
+            if (sttStatus) sttStatus.textContent = "📡 Offline Mode: Audio Only (No STT)";
+            updateGuideTranscriptUI("📡 Offline Mode - Audio streaming without transcription", false);
+        } else if (!SpeechRecognitionAPI) {
             log("STT Not Supported on this browser");
+            // Show in UI instead of alert
+            const sttStatus = document.getElementById('stt-status');
+            if (sttStatus) sttStatus.textContent = "⚠️ STT: Not Supported (Use Chrome)";
         } else {
             if (recognition) {
                 // Prevent multiple instances
                 try { recognition.stop(); } catch (e) { }
             }
-            recognition = new webkitSpeechRecognition();
+            log("Creating SpeechRecognition instance...");
+            recognition = new SpeechRecognitionAPI();
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'ko-KR'; // Guide speaks Korean
 
-            // Deep Debugging for STT
+            // STT Engine Setup
             recognition.onstart = () => {
                 log("STT Engine: Started");
-                updateGuideTranscriptUI("🎤 Listening...", false);
+                // Show STT status on UI
+                const sttStatus = document.getElementById('stt-status');
+                if (sttStatus) sttStatus.textContent = "🎤 STT: Active";
+                updateGuideTranscriptUI("🎤 Listening for speech...", false);
             };
-            recognition.onaudiostart = () => log("STT Engine: Audio Detected");
-            recognition.onspeechstart = () => log("STT Engine: Speech Detected");
+            // recognition.onaudiostart = () => log("STT Engine: Audio Detected");
+            // recognition.onspeechstart = () => log("STT Engine: Speech Detected");
             recognition.onnomatch = () => log("STT Engine: No Match");
             recognition.onerror = (e) => {
-                log("STT Error: " + e.error);
+                log("STT Error: " + e.error + " (message: " + (e.message || 'none') + ")");
                 if (e.error === 'not-allowed') {
-                    alert("STT Permission Denied. Check settings.");
                     els.guideStatus.textContent = "Error: STT Blocked";
                     els.guideStatus.classList.add('status-error');
                 } else if (e.error === 'network') {
                     els.guideStatus.textContent = "Error: STT Network Issue";
+                } else if (e.error === 'aborted') {
+                    // Android often aborts STT - auto-restart
+                    log("[Android Debug] STT aborted - will auto-restart");
+                } else if (e.error === 'no-speech') {
+                    // No speech detected - this is normal, just restart
+                    log("[Android Debug] No speech detected - will auto-restart");
                 }
             };
+            
+            // Android-specific: Add audio events for debugging
+            recognition.onaudiostart = () => log("[Android Debug] STT Audio Capture Started");
+            recognition.onspeechstart = () => log("[Android Debug] Speech Detected!");
+            recognition.onspeechend = () => log("[Android Debug] Speech Ended");
             recognition.onend = () => {
                 log("STT Engine: Ended (Will Auto-restart)");
                 if (isBroadcasting) {
-                    try { recognition.start(); } catch (e) { log("STT Restart Fail: " + e); }
+                    // Android Chrome needs longer delay for STT restart
+                    const isAndroid = /Android/i.test(navigator.userAgent);
+                    const restartDelay = isAndroid ? 500 : 1000;
+                    log("[Android Debug] STT restart in " + restartDelay + "ms, isAndroid=" + isAndroid);
+                    setTimeout(() => {
+                        try { 
+                            recognition.start(); 
+                            log("[Android Debug] STT restarted successfully");
+                        } catch (e) { 
+                            log("STT Restart Fail: " + e); 
+                            // On Android, try again after another delay if first restart fails
+                            if (isAndroid && isBroadcasting) {
+                                setTimeout(() => {
+                                    try { recognition.start(); } catch (e2) { log("STT Retry Fail: " + e2); }
+                                }, 1000);
+                            }
+                        }
+                    }, restartDelay);
                 }
             };
 
             recognition.onresult = (event) => {
+                log("[Android Debug] STT onresult fired, resultIndex=" + event.resultIndex + ", results.length=" + event.results.length);
+                
                 let interim = '';
                 let final = '';
 
@@ -425,77 +601,101 @@ window.startBroadcast = async function () {
                     }
                 }
 
-                // Handle Final Result (Translate & Save)
                 if (final) {
-                    socket.emit('transcript_msg', { text: final, source_lang: 'ko', isFinal: true });
                     log("STT Final: " + final);
-
-                    // Local UI (Final)
+                    // Check socket connection before emitting
+                    if (socket && socket.connected) {
+                        socket.emit('transcript_msg', { text: final, source_lang: 'ko', isFinal: true });
+                        log("[Android Debug] transcript_msg emitted (final)");
+                    } else {
+                        log("[Android Debug] ERROR: Socket not connected! Cannot emit transcript_msg");
+                    }
                     updateGuideTranscriptUI(final, true);
                 }
 
-                // Handle Interim Result (Real-time feedback)
                 if (interim) {
-                    socket.emit('transcript_msg', { text: interim, source_lang: 'ko', isFinal: false });
-                    // Local UI (Interim)
+                    // Check socket connection before emitting
+                    if (socket && socket.connected) {
+                        socket.emit('transcript_msg', { text: interim, source_lang: 'ko', isFinal: false });
+                    }
                     updateGuideTranscriptUI(interim, false);
                 }
             };
-            try {
-                recognition.start();
-                log("STT Init Command Sent");
-            } catch (e) {
-                log("STT Start Error: " + e);
-            }
+            // On Android, add delay before starting STT to avoid microphone conflict
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            const sttStartDelay = isAndroid ? 1000 : 100;
+            log("[Android Debug] Will start STT in " + sttStartDelay + "ms, isAndroid=" + isAndroid);
+            
+            setTimeout(() => {
+                try {
+                    recognition.start();
+                    log("STT Init Command Sent");
+                } catch (e) {
+                    log("STT Start Error: " + e);
+                    // On Android, retry with longer delay
+                    if (isAndroid) {
+                        setTimeout(() => {
+                            try { recognition.start(); log("STT Retry Success"); } 
+                            catch (e2) { log("STT Retry Fail: " + e2); }
+                        }, 2000);
+                    }
+                }
+            }, sttStartDelay);
         }
 
-        // Helper for Guide UI
-        function updateGuideTranscriptUI(text, isFinal) {
-            const guideBox = document.getElementById('guide-transcript-box');
-            if (!guideBox) return;
-
-            if (isFinal) {
-                // Append final text
-                // Create a new line or span? For simplicity, we just replace or append.
-                // Re-using the box logic:
-                guideBox.innerHTML = `<span style="color: #ccff00; text-shadow: 0 0 5px #ccff00;">${text}</span>`;
-            } else {
-                // Show interim text in different color (e.g. White or Orange)
-                guideBox.innerHTML = `<span style="color: #fff;">${text}</span>`;
-            }
+        // --- Audio Transmission ---
+        // Resume AudioContext explicitly (required on mobile after user gesture)
+        if (audioCtx && audioCtx.state === 'suspended') {
+            log("[Mobile Fix] Resuming suspended AudioContext");
+            await audioCtx.resume();
+            log("[Mobile Fix] AudioContext state after resume: " + audioCtx.state);
         }
-        // Initialize WebRTC or Fallback depending on Mode
+        
+        // Setup Visualizer for Guide
+        setupAudioAnalysis(localStream, 'guide-meter');
+
+        // Audio Mode Logic:
+        // - STT Mode: Skip MediaRecorder to avoid microphone conflict, use WebRTC for audio
+        // - Recorder Mode: Use MediaRecorder for audio streaming, no STT
+        // This is the user's explicit choice via the toggle
+        const useRecorder = audioMode === 'recorder' || offlineMode;
+        
+        if (useRecorder) {
+            log("[Recorder Mode] Using MediaRecorder for audio streaming");
+        } else {
+            log("[STT Mode] Skipping MediaRecorder, audio via WebRTC only");
+        }
+
         if (useWebRTC) {
             els.guideStatus.textContent = "Broadcasting (WebRTC)...";
-
-            // Initialize WebRTC
             createPeerConnection();
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
-            // Setup Visualizer for Guide
-            setupAudioAnalysis(localStream, 'guide-meter');
-
-            // Create Offer
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
             log("Gathering ICE candidates...");
             await waitForICEGathering(pc);
-            log("ICE Gathering Complete");
-
             socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
-
-            // Also setup Recorder as Fallback (Double Safety)
-            setupFallbackRecorder(localStream);
+            
+            // Use MediaRecorder only in Recorder mode (not in STT mode)
+            if (useRecorder) {
+                setupFallbackRecorder(localStream);
+                els.guideStatus.textContent = "Broadcasting (WebRTC + Recorder)";
+            } else {
+                els.guideStatus.textContent = "Broadcasting (WebRTC + STT)";
+            }
         } else {
-            // Manual Mode (WebSocket Only)
-            els.guideStatus.textContent = "Broadcasting (Manual/WebSocket)...";
-            // Setup Visualizer
-            setupAudioAnalysis(localStream, 'guide-meter');
-            // Direct to WebSocket Recorder
-            setupFallbackRecorder(localStream);
+            // WebSocket-only mode (non-WebRTC browsers)
+            els.guideStatus.textContent = "Broadcasting (WebSocket)...";
+            if (useRecorder) {
+                setupFallbackRecorder(localStream);
+                els.guideStatus.textContent = "Broadcasting (Recorder Mode)";
+            } else {
+                log("[STT Mode] WARNING: No audio transmission without WebRTC!");
+                els.guideStatus.textContent = "STT Only (No Audio Stream)";
+            }
         }
-
     } catch (err) {
         log("Error starting broadcast: " + err);
         stopBroadcast();
@@ -505,6 +705,9 @@ window.startBroadcast = async function () {
 window.stopBroadcast = function () {
     log("Stop Broadcast clicked");
     isBroadcasting = false;
+
+    // Notify server that broadcast stopped
+    socket.emit('stop_broadcast');
 
     // Update Buttons
     const toggleBtn = document.getElementById('broadcast-toggle-btn');
@@ -549,12 +752,23 @@ function updateCounters() {
     }
 }
 
+function updateGuideTranscriptUI(text, isFinal) {
+    const guideBox = document.getElementById('guide-transcript-box');
+    if (!guideBox) return;
+
+    if (isFinal) {
+        guideBox.innerHTML = `<span style="color: #ccff00; text-shadow: 0 0 5px #ccff00;">${text}</span>`;
+    } else {
+        guideBox.innerHTML = `<span style="color: #fff;">${text}</span>`;
+    }
+}
+
 function getSupportedMimeType() {
     const types = [
         'audio/webm;codecs=opus',
         'audio/webm',
-        'audio/ogg',
-        'audio/mp4', // iOS support
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
         'audio/aac'
     ];
     for (const type of types) {
@@ -563,8 +777,7 @@ function getSupportedMimeType() {
             return type;
         }
     }
-    log("Warning: No standard MIME type supported for MediaRecorder");
-    return ''; // Let browser decide default
+    return '';
 }
 
 function setupFallbackRecorder(stream) {
@@ -577,9 +790,14 @@ function setupFallbackRecorder(stream) {
     } else {
         log("No MIME specified, using browser default");
     }
+    
+    // Add audioBitsPerSecond for better Android compatibility
+    options.audioBitsPerSecond = 128000;
 
     try {
+        log("Creating MediaRecorder with options: " + JSON.stringify(options));
         const recorder = new MediaRecorder(stream, options);
+        log("MediaRecorder created successfully. Actual mimeType: " + recorder.mimeType);
 
         recorder.ondataavailable = e => {
             if (e.data.size > 0) {
@@ -696,15 +914,93 @@ function createPeerConnection() {
 } // End createPeerConnection
 
 // --- Signaling ---
+// NOTE: Transcript handler moved to unified handler below (line ~1134)
+
+let ttsEnabled = false;
+function speakText(text, lang) {
+    if (!('speechSynthesis' in window)) return;
+    
+    // Stop any current speech
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang === 'original' ? 'ko-KR' : lang;
+    
+    // Adjust language code for Google TTS if needed
+    if (utterance.lang === 'en') utterance.lang = 'en-US';
+    if (utterance.lang === 'ja') utterance.lang = 'ja-JP';
+    if (utterance.lang === 'zh-CN') utterance.lang = 'zh-CN';
+    
+    window.speechSynthesis.speak(utterance);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const ttsBtn = document.getElementById('tts-btn');
+    if (ttsBtn) {
+        ttsBtn.onclick = () => {
+            ttsEnabled = !ttsEnabled;
+            ttsBtn.textContent = "Sound: " + (ttsEnabled ? "ON" : "OFF");
+            ttsBtn.style.background = ttsEnabled ? "#28a745" : "#444";
+            if (ttsEnabled) {
+                // Resume AudioContext as well
+                resumeAudioContext();
+                // Test speech
+                speakText("TTS Enabled", "en");
+            }
+        };
+    }
+});
+// Guide status handler - unified handler at line ~1065
+socket.on('guide_status', (data) => {
+    log("Guide Status Update: " + JSON.stringify(data));
+    const statusEl = document.getElementById('tourist-status');
+    if (!statusEl) return;
+
+    if (data.broadcasting) {
+        statusEl.textContent = "🎙️ Guide is Live (Broadcasting)";
+        statusEl.style.color = "#28a745";
+        statusEl.style.fontWeight = "bold";
+        
+        if (role === 'tourist' && touristAudioActive) {
+            log("Guide is broadcasting, requesting audio init and starting receiver...");
+            socket.emit('request_audio_init');
+            if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+                startTouristReceiver();
+            }
+        }
+    } else if (data.online) {
+        statusEl.textContent = "✅ Guide Online (Waiting to Start)";
+        statusEl.style.color = "#007bff";
+        statusEl.style.fontWeight = "normal";
+    } else {
+        statusEl.textContent = "❌ Guide Offline";
+        statusEl.style.color = "#dc3545";
+        statusEl.style.fontWeight = "normal";
+    }
+});
+
+socket.on('guide_ready', () => {
+    log("Guide Ready (WebRTC Track Active)");
+    const statusEl = document.getElementById('tourist-status');
+    if (statusEl) {
+        statusEl.textContent = "🎙️ Audio Receiving...";
+        statusEl.style.color = "#28a745";
+    }
+    if (role === 'tourist' && touristAudioActive) {
+        // startTouristReceiver(); // Handled by play button or auto-retry
+    }
+});
+
 socket.on('connect', () => {
     log("Socket.IO Connected");
     els.touristStatus.textContent = "Connected to Server";
     els.guideStatus.style.color = ""; // Reset color
     document.body.style.borderTop = "5px solid #28a745"; // Visual connection indicator
     if (role) {
-
         // Re-join if we were already there (Reconnect logic)
-        socket.emit('join_room', { role: role });
+        const langSel = document.getElementById('lang-select');
+        const lang = langSel ? langSel.value : 'en';
+        socket.emit('join_room', { role: role, language: lang });
     }
 });
 
@@ -748,6 +1044,11 @@ window.selectRole = function (r) {
     log("Role selected: " + r);
     role = r;
     els.roleSel.classList.add('hidden');
+    
+    // Get selected language for tourists
+    const langSel = document.getElementById('lang-select');
+    const lang = langSel ? langSel.value : 'en';
+    
     if (role === 'guide') {
         els.guideCtrl.classList.remove('hidden');
     } else {
@@ -755,14 +1056,17 @@ window.selectRole = function (r) {
         initAudioContext();
         touristAudioActive = true;
         els.touristStatus.textContent = "Waiting for Guide...";
-
-        // Check if guide is already online? 
-        // The server sends 'guide_status' on join_room, so the handler above will catch it.
-        // But we need to ensure we don't block it.
-        // Force a check?
-        // Server emits 'guide_status' immediately after join_room.
+        // Ensure we try to connect if guide is already live
+        socket.emit('request_guide_status');
     }
-    socket.emit('join_room', { role: role });
+    socket.emit('join_room', { role: role, language: lang });
+}
+
+// Handle language change for tourists
+window.onLanguageChange = function(selectEl) {
+    const lang = selectEl.value;
+    log("Language changed to: " + lang);
+    socket.emit('update_language', { language: lang });
 }
 
 // Full teardown of all tourist audio resources
@@ -982,24 +1286,22 @@ socket.on('guide_ready', () => {
     }
 });
 
-socket.on('guide_status', (data) => {
-    log("Guide Status Received: " + (data.online ? "Online" : "Offline"));
-    if (!data.online) {
-        els.touristStatus.textContent = "Waiting for Guide to start...";
-    } else {
-        els.touristStatus.textContent = "Guide Found! Connecting...";
-        // CRITICAL FIX: Late joiners need to start receiver if guide is already online
-        if (role === 'tourist' && touristAudioActive) {
-            if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
-                log("Guide valid, starting connection...");
-                startTouristReceiver(); // This triggers WebRTC Offer
-            }
-        }
-    }
-});
-// Transcript Receiver - Works for both Guide and Tourist
+// NOTE: guide_status handler already defined above, this block removed to prevent duplicate
 // Transcript Receiver - Works for both Guide and Tourist
 socket.on('transcript', (data) => {
+    log("[Android Debug] Transcript received: " + JSON.stringify(data).substring(0, 200));
+    
+    // IMPORTANT: If we receive transcript, guide MUST be online and broadcasting
+    // Update status display to ensure it's correct
+    if (role === 'tourist') {
+        const statusEl = document.getElementById('tourist-status');
+        if (statusEl && !statusEl.textContent.includes("Broadcasting")) {
+            statusEl.textContent = "Guide Broadcasting...";
+            statusEl.style.color = "#28a745";
+            log("[Android Debug] Auto-corrected guide status to Broadcasting (transcript received)");
+        }
+    }
+
     const touristBox = document.getElementById('transcript-box');
     const guideBox = document.getElementById('guide-transcript-box');
     const langSelect = document.getElementById('lang-select');
@@ -1026,7 +1328,7 @@ socket.on('transcript', (data) => {
 
         bubble.innerHTML = `
             <span class="message-timestamp">${timestamp}</span>
-            <div class="message-content">${text}</div>
+            <div class="message-content highlight-pen">${text}</div>
         `;
 
         box.appendChild(bubble);

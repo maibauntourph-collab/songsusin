@@ -34,6 +34,8 @@ python server.py
 
 ## API Endpoints
 - `GET /` - Main application page
+- `GET /monitor` - Real-time monitoring dashboard
+- `GET /api/monitor` - Monitoring stats API (JSON)
 - `POST /add_place` - Add a new place
 - `POST /upload_places` - Upload places from Excel/CSV
 - `GET /places` - Get all registered places
@@ -45,13 +47,17 @@ python server.py
 - `POST /clear_session` - Clear all session transcripts
 
 ## Socket.IO Events
-- `join_room` - Join as guide or tourist
+- `join_room` - Join as guide, tourist, or monitor (includes language for tourists)
 - `offer/answer` - WebRTC signaling
 - `transcript_msg` - Speech-to-text messages
 - `audio_chunk` - Binary audio streaming (WebM/Opus)
 - `audio_init` - Audio initialization segment for late-joining tourists
 - `request_audio_init` - Request cached init segment from server
 - `reset_audio_session` - Reset audio state for new broadcast
+- `start_broadcast` - Guide starts broadcasting
+- `stop_broadcast` - Guide stops broadcasting
+- `update_language` - Tourist changes language preference
+- `monitor_update` - Server sends real-time stats to monitors
 
 ## Audio Streaming Architecture
 The system uses MediaSource Extensions (MSE) API for continuous audio streaming:
@@ -67,6 +73,22 @@ The system uses MediaSource Extensions (MSE) API for continuous audio streaming:
 - Simplified tourist audio: Auto-receives when guide broadcasts (no manual controls)
 - Added socket event guards to prevent stale data processing
 - WebRTC fallback to WebSocket audio without retry loops
+- **Monitoring Dashboard**: Real-time monitoring of guide and tourists at `/monitor`
+  - Guide online/broadcasting status
+  - Connected tourists count by language
+  - Individual tourist session tracking
+
+## Latest Updates (Jan 8, 2026)
+- **Fixed "Waiting for Guide" issue**: Added `request_guide_status` event for manual status sync
+- **Improved guide status broadcasting**: All tourists now receive status updates when guide joins/broadcasts
+- **Android highlight fix**: Explicit `highlight-pen` class on translated text
+- **Removed alert sounds**: Disabled audio detection alerts during guide transmission
+- **Added TTS support**: Tourists can enable voice reading of translated text
+- **Created test reports**: `GUIDE_SYSTEM_REPORT_KR.md` and `GUIDE_SYSTEM_REPORT_EN.md`
+- **Android STT Fix**: Delayed STT start on Android to prevent microphone conflict
+- **STT Status Indicator**: Added UI element showing STT operation status
+- **Auto Guide Status Sync**: Tourist UI automatically updates to "Broadcasting" when receiving transcript
+- **Removed STT Alerts**: Replaced noisy alert dialogs with quiet log/UI messages
 
 ## Audio Control
 - **Guide**: Has Start/Stop Broadcast buttons to control when audio is transmitted
@@ -76,3 +98,12 @@ State management:
 - `touristAudioActive`: Set to true when tourist selects role, audio events are processed
 - Socket guards on `audio_chunk` and `audio_init` prevent stale data processing
 - WebRTC failure automatically falls back to WebSocket audio streaming
+
+## Documentation
+- `CHANGELOG_KR.md` - Progress/changelog in Korean
+- `GUIDE_SYSTEM_REPORT_KR.md` - Test report in Korean
+- `GUIDE_SYSTEM_REPORT_EN.md` - Test report in English
+- `ANDROID_DEBUG_REPORT_KR.md` - Android debugging report in Korean
+- `ANDROID_DEBUG_REPORT_EN.md` - Android debugging report in English
+- `BUSINESS_MODEL_KR.md` - Business model summary in Korean (Patent application)
+- `BUSINESS_MODEL_EN.md` - Business model summary in English (Patent application)

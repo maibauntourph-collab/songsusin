@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guide System Monitor</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            padding: 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            margin-bottom: 20px;
+        }
+        .header h1 { font-size: 1.8rem; margin-bottom: 10px; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .stat-card .number {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        .stat-card .label {
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        .stat-card.guide-online { border-left: 4px solid #00ff88; }
+        .stat-card.guide-offline { border-left: 4px solid #ff4444; }
+        .stat-card.broadcasting { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(0,212,255,0.3); }
+            50% { box-shadow: 0 0 40px rgba(0,212,255,0.6); }
+        }
+        .section-title {
+            font-size: 1.3rem;
+            margin: 25px 0 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+        .lang-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+        .lang-card {
+            background: rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+        .lang-card .count {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #ffd700;
+        }
+        .lang-card .name {
+            font-size: 0.85rem;
+            color: #ccc;
+            margin-top: 5px;
+        }
+        .tourist-table {
+            width: 100%;
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .tourist-table th, .tourist-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .tourist-table th {
+            background: rgba(255,255,255,0.1);
+            font-weight: 600;
+            color: #00d4ff;
+        }
+        .tourist-table tr:hover { background: rgba(255,255,255,0.05); }
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-dot.online { background: #00ff88; }
+        .status-dot.broadcasting { background: #00d4ff; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.5; } }
+        .timestamp {
+            text-align: center;
+            color: #666;
+            font-size: 0.85rem;
+            margin-top: 20px;
+        }
+        .lang-emoji {
+            font-size: 1.5rem;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Guide System Monitor</h1>
+        <p>Real-time connection monitoring dashboard</p>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card" id="guide-card">
+            <div class="number" id="guide-status-icon">--</div>
+            <div class="label">Guide Status</div>
+        </div>
+        <div class="stat-card">
+            <div class="number" id="tourist-count">0</div>
+            <div class="label">Connected Tourists</div>
+        </div>
+        <div class="stat-card">
+            <div class="number" id="lang-count">0</div>
+            <div class="label">Active Languages</div>
+        </div>
+        <div class="stat-card" id="broadcast-card">
+            <div class="number" id="broadcast-status">--</div>
+            <div class="label">Broadcast Status</div>
+        </div>
+    </div>
+
+    <h2 class="section-title">Tourists by Language</h2>
+    <div class="lang-grid" id="lang-grid">
+        <div class="no-data">No tourists connected</div>
+    </div>
+
+    <h2 class="section-title">Connected Tourists</h2>
+    <div style="overflow-x: auto;">
+        <table class="tourist-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Session ID</th>
+                    <th>Language</th>
+                    <th>Connected At</th>
+                </tr>
+            </thead>
+            <tbody id="tourist-list">
+                <tr><td colspan="4" class="no-data">No tourists connected</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="timestamp">
+        Last updated: <span id="last-update">--</span>
+    </div>
+
+    <script>
+        const langNames = {
+            'ko': 'Korean', 'en': 'English', 'ja': 'Japanese', 'zh-CN': 'Chinese (Simplified)',
+            'zh-TW': 'Chinese (Traditional)', 'es': 'Spanish', 'fr': 'French', 'de': 'German',
+            'it': 'Italian', 'pt': 'Portuguese', 'ru': 'Russian', 'ar': 'Arabic', 'hi': 'Hindi',
+            'th': 'Thai', 'vi': 'Vietnamese', 'id': 'Indonesian', 'ms': 'Malay', 'tl': 'Filipino'
+        };
+
+        const langEmojis = {
+            'ko': '🇰🇷', 'en': '🇺🇸', 'ja': '🇯🇵', 'zh-CN': '🇨🇳', 'zh-TW': '🇹🇼',
+            'es': '🇪🇸', 'fr': '🇫🇷', 'de': '🇩🇪', 'it': '🇮🇹', 'pt': '🇵🇹',
+            'ru': '🇷🇺', 'ar': '🇸🇦', 'hi': '🇮🇳', 'th': '🇹🇭', 'vi': '🇻🇳',
+            'id': '🇮🇩', 'ms': '🇲🇾', 'tl': '🇵🇭'
+        };
+
+        const socket = io();
+
+        socket.on('connect', () => {
+            console.log('Monitor connected');
+            socket.emit('join_room', { role: 'monitor' });
+        });
+
+        socket.on('monitor_update', (data) => {
+            updateDashboard(data);
+        });
+
+        function updateDashboard(data) {
+            const guideCard = document.getElementById('guide-card');
+            const guideIcon = document.getElementById('guide-status-icon');
+            const broadcastCard = document.getElementById('broadcast-card');
+            const broadcastStatus = document.getElementById('broadcast-status');
+
+            if (data.guide_online) {
+                guideCard.className = 'stat-card guide-online';
+                guideIcon.textContent = 'Online';
+                guideIcon.style.color = '#00ff88';
+            } else {
+                guideCard.className = 'stat-card guide-offline';
+                guideIcon.textContent = 'Offline';
+                guideIcon.style.color = '#ff4444';
+            }
+
+            if (data.guide_broadcasting) {
+                broadcastCard.className = 'stat-card broadcasting';
+                broadcastStatus.textContent = 'LIVE';
+                broadcastStatus.style.color = '#00d4ff';
+            } else {
+                broadcastCard.className = 'stat-card';
+                broadcastStatus.textContent = 'Idle';
+                broadcastStatus.style.color = '#888';
+            }
+
+            document.getElementById('tourist-count').textContent = data.total_tourists;
+            document.getElementById('lang-count').textContent = Object.keys(data.tourists_by_language).length;
+
+            const langGrid = document.getElementById('lang-grid');
+            if (Object.keys(data.tourists_by_language).length > 0) {
+                langGrid.innerHTML = Object.entries(data.tourists_by_language)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([lang, count]) => `
+                        <div class="lang-card">
+                            <span class="lang-emoji">${langEmojis[lang] || '🌐'}</span>
+                            <div class="count">${count}</div>
+                            <div class="name">${langNames[lang] || lang}</div>
+                        </div>
+                    `).join('');
+            } else {
+                langGrid.innerHTML = '<div class="no-data">No tourists connected</div>';
+            }
+
+            const touristList = document.getElementById('tourist-list');
+            if (data.tourist_list && data.tourist_list.length > 0) {
+                touristList.innerHTML = data.tourist_list.map((t, i) => `
+                    <tr>
+                        <td>${i + 1}</td>
+                        <td>${t.sid}...</td>
+                        <td>${langEmojis[t.language] || '🌐'} ${langNames[t.language] || t.language}</td>
+                        <td>${new Date(t.connected_at).toLocaleTimeString()}</td>
+                    </tr>
+                `).join('');
+            } else {
+                touristList.innerHTML = '<tr><td colspan="4" class="no-data">No tourists connected</td></tr>';
+            }
+
+            document.getElementById('last-update').textContent = new Date(data.timestamp).toLocaleTimeString();
+        }
+
+        setInterval(() => {
+            fetch('/api/monitor')
+                .then(r => r.json())
+                .then(updateDashboard)
+                .catch(e => console.log('Polling error:', e));
+        }, 3000);
+
+        fetch('/api/monitor')
+            .then(r => r.json())
+            .then(updateDashboard)
+            .catch(e => console.log('Initial fetch error:', e));
+    </script>
+</body>
+</html>

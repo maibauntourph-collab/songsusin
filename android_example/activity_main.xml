@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center_horizontal">
+
+    <TextView
+        android:id="@+id/tv_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Audio Session Manager Demo"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="32dp"/>
+
+    <TextView
+        android:id="@+id/tv_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="State: IDLE"
+        android:textSize="16sp"
+        android:padding="12dp"
+        android:background="#E0E0E0"
+        android:layout_marginBottom="16dp"/>
+
+    <Button
+        android:id="@+id/btn_record"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start Recording"
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:layout_marginBottom="12dp"/>
+
+    <Button
+        android:id="@+id/btn_listen"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start Listening (STT)"
+        android:textSize="16sp"
+        android:padding="16dp"
+        android:layout_marginBottom="24dp"/>
+
+    <TextView
+        android:id="@+id/tv_transcript_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Speech Result:"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:id="@+id/tv_transcript"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:text="(Transcription will appear here...)"
+        android:textSize="18sp"
+        android:padding="16dp"
+        android:background="#F5F5F5"
+        android:gravity="top"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Note: STT will automatically pause recording, perform speech recognition, then resume recording."
+        android:textSize="12sp"
+        android:textColor="#666666"
+        android:layout_marginTop="16dp"/>
+
+</LinearLayout>
