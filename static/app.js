@@ -1596,24 +1596,54 @@ socket.on('transcript', async (data) => {
 // const ttsBtn = document.getElementById('tts-btn'); ... REMOVED
 
 // Background Audio Fix (Wake Lock for Tourist)
+// Background Audio Fix (Wake Lock + NoSleep Video for iOS/Android)
 async function enableBackgroundMode() {
+    // 1. Try Screen Wake Lock (Android/PC)
     try {
         if ('wakeLock' in navigator) {
             await navigator.wakeLock.request('screen');
-            log("Tourist Screen Wake Lock active");
+            log("Screen Wake Lock active (Android/Desktop)");
         }
     } catch (e) {
         log("WakeLock fail: " + e);
     }
+
+    // 2. Play Silent Video (iOS/Safari Hack) - "NoSleep.js" Strategy
+    // iOS pauses JS timers when screen locks unless an A/V element is active.
+    if (!window.noSleepVideo) {
+        const video = document.createElement('video');
+        video.setAttribute('playsinline', '');
+        video.setAttribute('no-audio', '');
+        video.style.display = 'none';
+
+        // Tiny 1s silent WebM or MP4 loop
+        video.src = 'data:video/mp4;base64,AAAAIGZ0eXGlc29tAAAAAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAs1tZGF0AAACrgYF//+//7fcP8AAAAPbW9vdgAAACxtdmhkAAAAABGjU4ARo1OAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAASdHJhawAAAFx0a2hkAAAAABGjU4ARo1OAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAABIAAAASAAAAAAAACBlZHRzAAAAHGVsc3QAAAAAAAAAAQAAABAAAAAAAAEAAAAAAG1tZGlhAAAAIG1kaGQAAAAAEaNTgBGjU4AAAAAAAAABAAAAAAAAAAAAAVhoZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAVmlkZW9IYW5kbGVyAAAAATNtaW5mAAAAFHZtaGQBMQAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAALZzdGJsAAAAenN0c2QAAAAAAAAAAQAAAGhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAEgASAAAAAEABAAAAABqYXZjQwFYgAAb//8AAgAEAOABOAAZ/95/D4gAAAAAHhBFgAAK/8AAAAAY///+AAAMAgAAAB1zdHRzAAAAAAAAAAEAAAAEAAAAAQAAABxzdHNjAAAAAAAAAAEAAAABAAAABAAAAAEAAAAwc3RzegAAAAAAAAAEAAAAQAAAAAQAAABAAAAABAAAAEAAAAAcY29MNAAAAAQAAAAAAAAbdHJha3M=';
+
+        video.loop = true;
+        document.body.appendChild(video);
+
+        try {
+            await video.play();
+            window.noSleepVideo = video;
+            log("Background Video Loop Started (iOS Fix)");
+        } catch (e) {
+            log("Background Video Start Failed (User Interaction needed): " + e);
+        }
+    }
 }
 
-// Hook WakeLock into Tourist Start
-const origStart = window.startTouristReceiver; // Assuming it's reachable or we hook into selectRole
-// Actually best to hook into initAudioContext or play button
+// Hook WakeLock into User Interactions
 const playBtn = document.getElementById('play-btn');
 if (playBtn) {
     playBtn.addEventListener('click', () => {
         enableBackgroundMode();
+    });
+}
+// Also hook into Guide Broadcast Start
+const broadcastBtn = document.getElementById('broadcast-toggle-btn');
+if (broadcastBtn) {
+    broadcastBtn.addEventListener('click', () => {
+        if (!isBroadcasting) enableBackgroundMode(); // Only if starting
     });
 }
 
