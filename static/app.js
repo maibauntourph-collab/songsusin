@@ -15,6 +15,22 @@ let touristAudioActive = false;
 // In offline mode, STT/translation is disabled, only audio streaming works
 let offlineMode = false;
 
+// Audio Mode: 'stt' for speech-to-text, 'recorder' for MediaRecorder audio streaming
+// On Android, these conflict - user must choose one
+let audioMode = 'stt'; // Default to STT mode
+
+window.setAudioMode = function(mode) {
+    audioMode = mode;
+    log("[Audio Mode] Set to: " + mode);
+    
+    const sttStatus = document.getElementById('stt-status');
+    if (mode === 'stt') {
+        if (sttStatus) sttStatus.textContent = "🎤 STT Mode: Speech-to-text enabled";
+    } else {
+        if (sttStatus) sttStatus.textContent = "🔊 Recorder Mode: Audio streaming only (No STT)";
+    }
+}
+
 function detectOfflineMode() {
     // Check if we're in an offline/local environment
     const isLocalIP = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|localhost|127\.0\.0\.1)/.test(location.hostname);
@@ -484,9 +500,18 @@ window.startBroadcast = async function () {
         detectOfflineMode();
         
         // STT (Speech to Text) - Guide Side
-        // Skip STT in offline mode (Google services required)
+        // Skip STT in offline mode, or if audioMode is 'recorder'
         const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (offlineMode) {
+        const useSTT = audioMode === 'stt' && !offlineMode;
+        
+        log("[Audio Mode] Current mode: " + audioMode + ", useSTT=" + useSTT);
+        
+        if (audioMode === 'recorder') {
+            log("[Recorder Mode] STT disabled - using MediaRecorder for audio");
+            const sttStatus = document.getElementById('stt-status');
+            if (sttStatus) sttStatus.textContent = "🔊 Recorder Mode: Audio streaming (No STT)";
+            updateGuideTranscriptUI("🔊 Recorder Mode - Audio streaming without transcription", false);
+        } else if (offlineMode) {
             log("[Offline Mode] STT disabled - audio only streaming");
             const sttStatus = document.getElementById('stt-status');
             if (sttStatus) sttStatus.textContent = "📡 Offline Mode: Audio Only (No STT)";
@@ -629,18 +654,16 @@ window.startBroadcast = async function () {
         // Setup Visualizer for Guide
         setupAudioAnalysis(localStream, 'guide-meter');
 
-        // Android STT Fix: On Android, skip MediaRecorder to avoid microphone conflict
-        // MediaRecorder monopolizes the mic on Android Chrome, blocking STT
-        // Exception: In offline mode, we WANT MediaRecorder since STT is disabled
-        const isAndroidDevice = /Android/i.test(navigator.userAgent);
-        const sttEnabled = !!SpeechRecognitionAPI && !offlineMode;
-        const skipRecorderForSTT = isAndroidDevice && sttEnabled;
+        // Audio Mode Logic:
+        // - STT Mode: Skip MediaRecorder to avoid microphone conflict, use WebRTC for audio
+        // - Recorder Mode: Use MediaRecorder for audio streaming, no STT
+        // This is the user's explicit choice via the toggle
+        const useRecorder = audioMode === 'recorder' || offlineMode;
         
-        if (offlineMode) {
-            log("[Offline Mode] Using MediaRecorder for audio streaming (STT disabled)");
-        } else if (skipRecorderForSTT) {
-            log("[Android STT Fix] Skipping MediaRecorder to allow STT to work");
-            log("[Android STT Fix] Audio will be sent via WebRTC only");
+        if (useRecorder) {
+            log("[Recorder Mode] Using MediaRecorder for audio streaming");
+        } else {
+            log("[STT Mode] Skipping MediaRecorder, audio via WebRTC only");
         }
 
         if (useWebRTC) {
@@ -655,20 +678,21 @@ window.startBroadcast = async function () {
             await waitForICEGathering(pc);
             socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
             
-            // On Android with STT: Skip MediaRecorder to avoid mic conflict
-            // On other platforms: Use dual mode (WebRTC + WebSocket fallback)
-            if (!skipRecorderForSTT) {
+            // Use MediaRecorder only in Recorder mode (not in STT mode)
+            if (useRecorder) {
                 setupFallbackRecorder(localStream);
+                els.guideStatus.textContent = "Broadcasting (WebRTC + Recorder)";
             } else {
                 els.guideStatus.textContent = "Broadcasting (WebRTC + STT)";
             }
         } else {
             // WebSocket-only mode (non-WebRTC browsers)
             els.guideStatus.textContent = "Broadcasting (WebSocket)...";
-            if (!skipRecorderForSTT) {
+            if (useRecorder) {
                 setupFallbackRecorder(localStream);
+                els.guideStatus.textContent = "Broadcasting (Recorder Mode)";
             } else {
-                log("[Android STT Fix] WARNING: No audio transmission without WebRTC!");
+                log("[STT Mode] WARNING: No audio transmission without WebRTC!");
                 els.guideStatus.textContent = "STT Only (No Audio Stream)";
             }
         }

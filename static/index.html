@@ -262,6 +262,31 @@
             <h3>🛠️ Guide Admin (Register Info)</h3>
             <h3>🛠️ Guide Admin (Register Info)</h3>
 
+            <!-- Audio Mode Selection (MediaRecorder vs STT) -->
+            <div id="audio-mode-panel"
+                style="background: #2a1a3a; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #9b59b6;">
+                <h4 style="margin-top:0; color: #9b59b6;">🎙️ Audio Mode (Android Fix)</h4>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label style="color: #fff; display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; background: #3a2a4a; border-radius: 6px;">
+                        <input type="radio" name="audio-mode" value="stt" id="audio-mode-stt" checked onchange="setAudioMode('stt')">
+                        <div>
+                            <strong>📝 STT Mode (Speech-to-Text)</strong>
+                            <div style="font-size: 0.8rem; color: #aaa;">Real-time transcription + translation. Audio via WebRTC only.</div>
+                        </div>
+                    </label>
+                    <label style="color: #fff; display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px; background: #3a2a4a; border-radius: 6px;">
+                        <input type="radio" name="audio-mode" value="recorder" id="audio-mode-recorder" onchange="setAudioMode('recorder')">
+                        <div>
+                            <strong>🔊 Recorder Mode (Audio Stream)</strong>
+                            <div style="font-size: 0.8rem; color: #aaa;">MediaRecorder audio streaming. No text transcription.</div>
+                        </div>
+                    </label>
+                </div>
+                <div style="color: #ffc107; font-size: 0.75rem; margin-top: 10px; padding: 5px; background: rgba(255,193,7,0.1); border-radius: 4px;">
+                    ⚠️ Android: MediaRecorder blocks STT. Choose one mode only.
+                </div>
+            </div>
+
             <!-- Offline Mode Toggle -->
             <div id="offline-mode-panel"
                 style="background: #1a3a1a; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 2px solid #28a745;">
