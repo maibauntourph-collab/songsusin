@@ -148,6 +148,7 @@ function log(msg) {
 // Initial selectRole removed. Use the merged one below.
 
 //    // Guide View Mode Toggle
+//    // Guide View Mode Toggle
 window.setGuideViewMode = function (mode) {
     const simpleBtn = document.getElementById('btn-mode-simple');
     const devBtn = document.getElementById('btn-mode-dev');
@@ -158,21 +159,28 @@ window.setGuideViewMode = function (mode) {
     const qrSection = document.getElementById('guide-qr-section');
 
     // Reset Buttons
-    simpleBtn.style.background = "#6c757d";
-    devBtn.style.background = "#6c757d";
+    if (simpleBtn) simpleBtn.style.background = "#6c757d";
+    if (devBtn) devBtn.style.background = "#6c757d";
     if (qrBtn) qrBtn.style.background = "#6c757d";
 
     // Hide All Sections first
     if (simpleSection) simpleSection.classList.add('hidden');
     if (devSection) devSection.classList.add('hidden');
-    // No, I kept it? Let's check HTML.
-    // Actually I moved 'Manual Entry' to 'Simple Place Input'. 
-    // So in Dev mode, we should STILL see 'Simple Place Input' because that's the only way to add places now.
-    // So simplePlace stays visible in both.
+    if (qrSection) qrSection.classList.add('hidden');
 
-    // Button Styles
-    if (btnSimple) btnSimple.style.background = "#6c757d";
-    if (btnDev) btnDev.style.background = "#007bff";
+    // Activate specific sections based on mode
+    if (mode === 'simple') {
+        if (simpleBtn) simpleBtn.style.background = "#007bff";
+        if (simpleSection) simpleSection.classList.remove('hidden');
+    } else if (mode === 'qr') {
+        if (qrBtn) qrBtn.style.background = "#17a2b8";
+        if (qrSection) qrSection.classList.remove('hidden');
+    } else if (mode === 'dev') {
+        if (devBtn) devBtn.style.background = "#007bff";
+        if (devSection) devSection.classList.remove('hidden');
+        // Dev mode also shows simple input for convenience
+        if (simpleSection) simpleSection.classList.remove('hidden');
+    }
 }
 
 
