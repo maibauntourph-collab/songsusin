@@ -200,12 +200,14 @@ const els = {
 
 function log(msg) {
     console.log(msg);
-    els.debug.textContent += msg + '\n';
+    // Reverse order: Newest at top
+    if (els.debug) {
+        els.debug.innerText = msg + '\n' + els.debug.innerText.substring(0, 5000); // Limit size
+    }
 }
 
 // Initial selectRole removed. Use the merged one below.
 
-//    // Guide View Mode Toggle
 //    // Guide View Mode Toggle
 window.setGuideViewMode = function (mode) {
     const simpleBtn = document.getElementById('btn-mode-simple');
@@ -215,6 +217,7 @@ window.setGuideViewMode = function (mode) {
     const simpleSection = document.getElementById('simple-place-input');
     const devSection = document.getElementById('guide-dev-section');
     const qrSection = document.getElementById('guide-qr-section');
+    const debugSection = document.getElementById('debug');
 
     // Reset Buttons
     if (simpleBtn) simpleBtn.style.background = "#6c757d";
@@ -225,6 +228,7 @@ window.setGuideViewMode = function (mode) {
     if (simpleSection) simpleSection.classList.add('hidden');
     if (devSection) devSection.classList.add('hidden');
     if (qrSection) qrSection.classList.add('hidden');
+    if (debugSection) debugSection.classList.add('hidden'); // Hide debug by default
 
     // Activate specific sections based on mode
     if (mode === 'simple') {
@@ -236,6 +240,7 @@ window.setGuideViewMode = function (mode) {
     } else if (mode === 'dev') {
         if (devBtn) devBtn.style.background = "#007bff";
         if (devSection) devSection.classList.remove('hidden');
+        if (debugSection) debugSection.classList.remove('hidden'); // Show debug only in dev
         // Dev mode also shows simple input for convenience
         if (simpleSection) simpleSection.classList.remove('hidden');
     }

@@ -286,6 +286,14 @@
             <button onclick="addPlace()" style="background: #17a2b8; width: 100%;">Update Info</button>
         </div>
 
+        <!-- Shared Places List (Visible in Simple Mode) -->
+        <div id="shared-places-section" style="margin-top: 20px;">
+            <h4 style="border-bottom: 2px solid #ddd; padding-bottom: 10px; color: #555;">📋 Registered Places</h4>
+            <div id="places-list"
+                style="max-height: 200px; overflow-y: auto; margin-top: 10px; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 10px;">
+                (Loading places...)</div>
+        </div>
+
         <!-- Developer Only Section -->
         <div id="guide-dev-section" class="hidden">
             <h3 style="border-top: 2px dashed #ccc; margin-top: 30px; padding-top: 20px; color: #666;">🔧 Developer
@@ -353,9 +361,7 @@
 
                 <div id="admin-status" style="margin-top: 10px; font-size: 0.9rem;"></div>
 
-                <!-- Places List -->
-                <h4 style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">📋 Registered Places</h4>
-                <div id="places-list" style="max-height: 200px; overflow-y: auto; margin-top: 10px;"></div>
+                <!-- Places List moved to shared area -->
 
                 <!-- History -->
                 <h4 style="margin-top: 20px; border-top: 1px solid #444; padding-top: 10px;">📜 History</h4>
