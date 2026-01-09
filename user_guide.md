@@ -39,7 +39,25 @@ PC는 **방송국 역할**을 합니다. 프로그램을 설치하고 실행해�
 
 ---
 
-## 📱 2. 핸드폰 (가이드 및 관광객) 준비사항
+## 📱 2. 안드로이드 폰 서버 (Mobile Server) 준비사항
+PC 대신 **안드로이드 폰**을 서버로 사용할 수도 있습니다. (Termux 앱 사용)
+
+### A. 설치 방법 (Installation)
+1.  **Termux** 앱을 설치합니다. (반드시 Play 스토어가 아닌 **F-Droid** 버전 사용)
+2.  Termux 앱을 열고 아래 명령어를 **복사/붙여넣기** 하여 실행합니다. (GitHub 로그인 필요할 수 있음)
+```bash
+pkg install -y git && ( [ -d "songsusin" ] || git clone https://github.com/maibauntourph-collab/songsusin.git ) && cd songsusin && git pull && bash setup_termux.sh
+```
+
+### B. 실행 방법
+설치가 완료되면 언제든지 다음 명령어로 서버를 켤 수 있습니다.
+```bash
+cd songsusin && python server.py
+```
+
+---
+
+## 📱 3. 핸드폰 (가이드 및 관광객 - 클라이언트) 준비사항
 핸드폰에는 **아무것도 설치할 필요가 없습니다!** (앱 설치 X)
 
 ### A. 가이드 (방송하는 사람)
