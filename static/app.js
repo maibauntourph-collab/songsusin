@@ -1285,8 +1285,29 @@ function initMediaSourceFallback() {
     mediaSource.addEventListener('sourceopen', () => {
         log("MediaSource opened for streaming");
 
+        // Detect supported MIME type
+        const mimeTypes = [
+            'audio/webm; codecs=opus',
+            'audio/webm',
+            'audio/mp4'
+        ];
+        let selectedMime = '';
+
+        for (const type of mimeTypes) {
+            if (MediaSource.isTypeSupported(type)) {
+                selectedMime = type;
+                log("[Tourist] Selected MediaSource MIME: " + selectedMime);
+                break;
+            }
+        }
+
+        if (!selectedMime) {
+            log("[Error] No supported MediaSource MIME type found!");
+            return;
+        }
+
         try {
-            sourceBuffer = mediaSource.addSourceBuffer('audio/webm; codecs=opus');
+            sourceBuffer = mediaSource.addSourceBuffer(selectedMime);
             sourceBuffer.mode = 'sequence';
             sourceBufferReady = true;
 
@@ -1294,7 +1315,7 @@ function initMediaSourceFallback() {
             sourceBuffer.addEventListener('error', (e) => log("SourceBuffer error: " + e));
 
             flushPendingBuffers();
-            log("SourceBuffer ready for audio/webm; codecs=opus");
+            log("SourceBuffer ready for " + selectedMime);
         } catch (e) {
             log("SourceBuffer creation failed: " + e);
             sourceBufferReady = false;
@@ -1317,14 +1338,18 @@ function initMediaSourceFallback() {
 
 function flushPendingBuffers() {
     if (!sourceBufferReady || !sourceBuffer || sourceBuffer.updating) return;
-    if (!initReceived) {
-        return;
-    }
+    // if (!initReceived) {
+    //    return;
+    // }
+    // BYPASS: Allow stream to play even without explicit init packet
+    // WebM streams from MediaRecorder usually start with header anyway
     if (pendingBuffers.length === 0) return;
 
     const buffer = pendingBuffers.shift();
     try {
         sourceBuffer.appendBuffer(buffer);
+        // Throttle logs for playback to avoid UI freeze
+        if (Math.random() < 0.05) log("[Tourist Info] Appending audio buffer (" + buffer.byteLength + " bytes)");
         els.touristStatus.textContent = "Playing Audio (Stream)";
     } catch (e) {
         if (e.name === 'QuotaExceededError') {
