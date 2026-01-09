@@ -47,7 +47,7 @@ echo "[*] Installing Python libraries (Grab a coffee ☕)..."
 export CFLAGS="-Wno-deprecated-declarations -Wno-unreachable-code"
 pip install wheel setuptools
 pip install numpy
-pip install fastapi "uvicorn[standard]" python-socketio aiortc Jinja2 openai deep-translator pandas openpyxl
+pip install fastapi "uvicorn[standard]" python-socketio aiortc Jinja2 openai deep-translator pandas openpyxl python-multipart netifaces
 
 # 5. Create Desktop Shortcut (Optional but recommended)
 echo "[*] Creating startup shortcut..."

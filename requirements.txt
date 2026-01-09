@@ -6,6 +6,9 @@ aiohttp
 cryptography
 netifaces
 deep-translator
+maskpass
+numpy
+Jinja2
 pandas
 openpyxl
 python-multipart
