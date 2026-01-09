@@ -28,17 +28,44 @@ window.setAudioMode = function (mode) {
     log("[Audio Mode] Set to: " + mode);
 
     // UI Update
-    // ... (UI logic)
-
-    // Force stop STT if switching to recorder
-    if (mode === 'recorder' && recognition) {
-        try { recognition.stop(); } catch (e) { }
-    }
     const sttStatus = document.getElementById('stt-status');
     if (mode === 'stt') {
         if (sttStatus) sttStatus.textContent = "🎤 STT Mode: Speech-to-text enabled";
     } else {
-        if (sttStatus) sttStatus.textContent = "🔊 Recorder Mode: Audio streaming only (No STT)";
+        if (sttStatus) sttStatus.textContent = "🔊 Recorder Mode: Broadcast audio only";
+    }
+
+    // Dynamic Mode Switching Logic
+    if (isBroadcasting) {
+        log("[Audio Mode] Switching mode while broadcasting...");
+
+        if (mode === 'recorder') {
+            // Stop STT
+            if (recognition) {
+                try { recognition.stop(); } catch (e) { }
+            }
+            // Start Recorder if not running
+            if (localStream) {
+                setupFallbackRecorder(localStream);
+            } else {
+                log("[Audio Mode] Error: No local stream available for recorder");
+            }
+        } else if (mode === 'stt') {
+            // Stop Recorder (if we had a handle, but currently setupFallbackRecorder doesn't return one globally... wait, we need to fix that)
+            // Actually app.js doesn't store the MediaRecorder instance globally cleanly. 
+            // We should just ensure STT starts. 
+
+        } else if (mode === 'stt') {
+            // Stop Recorder if running
+            if (window.mediaRecorder && window.mediaRecorder.state !== 'inactive') {
+                try { window.mediaRecorder.stop(); } catch (e) { }
+            }
+
+            // Start STT
+            if (recognition) {
+                try { recognition.start(); } catch (e) { log("STT Start Error: " + e); }
+            }
+        }
     }
 }
 
@@ -851,7 +878,10 @@ function setupFallbackRecorder(stream) {
 
     try {
         log("Creating MediaRecorder with options: " + JSON.stringify(options));
-        const recorder = new MediaRecorder(stream, options);
+        // Assign to global window.mediaRecorder for control
+        window.mediaRecorder = new MediaRecorder(stream, options);
+        const recorder = window.mediaRecorder;
+
         log("MediaRecorder created successfully. Actual mimeType: " + recorder.mimeType);
 
         recorder.ondataavailable = e => {
