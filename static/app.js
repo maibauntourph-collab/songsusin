@@ -80,6 +80,30 @@ function detectOfflineMode() {
         return true;
     }
     return false;
+    return false;
+}
+
+window.toggleOfflineMode = function (checkbox) {
+    offlineMode = checkbox.checked;
+    log("[Offline Mode] User toggled: " + offlineMode);
+
+    const label = document.getElementById('offline-mode-label');
+    const panel = document.getElementById('offline-mode-panel');
+
+    if (offlineMode) {
+        if (label) label.textContent = "Offline Mode ENABLED (Audio Only)";
+        if (panel) panel.style.border = "2px solid #ff4444";
+
+        // Force Recorder Mode
+        document.getElementById('audio-mode-recorder').checked = true;
+        setAudioMode('recorder');
+
+        // Explicitly kill STT
+        if (recognition) try { recognition.stop(); } catch (e) { }
+    } else {
+        if (label) label.textContent = "Enable Offline Mode";
+        if (panel) panel.style.border = "2px solid #28a745";
+    }
 }
 
 // Listen for online/offline changes
@@ -660,6 +684,11 @@ window.startBroadcast = async function () {
                 const currentMode = window.audioMode || audioMode;
                 log("Deep Debug: window.audioMode=" + window.audioMode + ", local var=" + audioMode);
 
+                if (offlineMode) {
+                    log("STT Engine: Blocked restart due to Offline Mode");
+                    return;
+                }
+
                 if (isBroadcasting && currentMode === 'stt') {
                     // Android Chrome needs longer delay for STT restart
                     const isAndroid = /Android/i.test(navigator.userAgent);
@@ -851,10 +880,10 @@ function updateGuideTranscriptUI(text, isFinal) {
 
 function getSupportedMimeType() {
     const types = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
+        'audio/mp4', // Try MP4 first (iOS/Newer Android) for best cross-platform if supported
+        'audio/webm;codecs=opus', // Standard WebM Opus
+        'audio/webm', // Generic WebM
         'audio/ogg;codecs=opus',
-        'audio/mp4',
         'audio/aac'
     ];
     for (const type of types) {
