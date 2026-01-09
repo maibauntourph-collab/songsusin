@@ -298,93 +298,52 @@ import io
 import concurrent.futures
 import functools
 
-# Executor for sync tasks (Translation)
-# Increased workers to handle 100 concurrent translations comfortably
-executor = concurrent.futures.ThreadPoolExecutor(max_workers=50)
-
-def translate_sync(text, target):
-    try:
-        return GoogleTranslator(source='auto', target=target).translate(text)
-    except Exception as e:
-        logger.error(f"Translation failed for {target}: {e}")
-        return text
-
 # Transcript/Translation Handler
 @sio_server.event
 async def transcript_msg(sid, data):
-    logger.info(f"[TRANSCRIPT] RAW data received from {sid}: {data}")
+    # logger.info(f"[TRANSCRIPT] RAW data received from {sid}: {data}")
     
     text = data.get('text', '')
     is_final = data.get('isFinal', True) 
-    
+    source_lang = data.get('source_lang', 'ko')
+
     # Validate and clean text
     if text:
         text = str(text).strip()
     
-    logger.info(f"[TRANSCRIPT] Processed: text='{text[:50] if text else 'EMPTY'}...', isFinal={is_final}, text_len={len(text) if text else 0}")
-    
     if not text:
-        logger.warning(f"[TRANSCRIPT] Empty text received from {sid}, ignoring")
         return
 
+    # Create simplified response structure
+    # Server NO LONGER translates. It just broadcasts the original.
     response = {
         'original': text,
-        'translations': {},
+        'source_lang': source_lang,
+        'translations': {}, # Clients will fill this themselves found
         'isFinal': is_final
     }
 
+    # Save to DB/File (Original Only)
     if is_final:
-        # Full list of supported languages (approx 100+)
-        targets = [
-            'af', 'sq', 'am', 'ar', 'hy', 'az', 'eu', 'be', 'bn', 'bs', 
-            'bg', 'ca', 'ceb', 'ny', 'zh-CN', 'zh-TW', 'co', 'hr', 'cs', 'da', 
-            'nl', 'en', 'eo', 'et', 'tl', 'fi', 'fr', 'fy', 'gl', 'ka', 
-            'de', 'el', 'gu', 'ht', 'ha', 'haw', 'iw', 'hi', 'hmn', 'hu', 
-            'is', 'ig', 'id', 'ga', 'it', 'ja', 'jw', 'kn', 'kk', 'km', 
-            'ko', 'ku', 'ky', 'lo', 'la', 'lv', 'lt', 'lb', 'mk', 'mg', 
-            'ms', 'ml', 'mt', 'mi', 'mr', 'mn', 'my', 'ne', 'no', 'ps', 
-            'fa', 'pl', 'pt', 'pa', 'ro', 'ru', 'sm', 'gd', 'sr', 'st', 
-            'sn', 'sd', 'si', 'sk', 'sl', 'so', 'es', 'su', 'sw', 'sv', 
-            'tg', 'ta', 'te', 'th', 'tr', 'uk', 'ur', 'uz', 'vi', 'cy', 
-            'xh', 'yi', 'yo', 'zu'
-        ]
-        loop = asyncio.get_event_loop()
-        
-        tasks = []
-        for lang in targets:
-            tgt = 'zh-CN' if lang == 'zh-CN' else lang
-            tasks.append(loop.run_in_executor(executor, translate_sync, text, tgt))
-        
-        try:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for i, lang in enumerate(targets):
-                if isinstance(results[i], Exception):
-                    response['translations'][lang] = text
-                    logger.error(f"Translation error for {lang}: {results[i]}")
-                else:
-                    response['translations'][lang] = results[i] or text
-        except Exception as e:
-            logger.error(f"Translation gather error: {e}")
-            for lang in targets:
-                response['translations'][lang] = text
-
         try:
             with open("guide_transcript.txt", "a", encoding="utf-8") as f:
                 f.write(f"{text}\n")
             
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
-            c.execute("INSERT INTO transcripts (text, translations) VALUES (?, ?)", (text, json.dumps(response['translations'])))
+            # We save empty translations JSON for compatibility
+            c.execute("INSERT INTO transcripts (text, translations) VALUES (?, ?)", (text, "{}"))
             conn.commit()
             conn.close()
-            
         except Exception as e:
             logger.error(f"File/DB save error: {e}")
 
-    logger.info(f"[TRANSCRIPT] Emitting to tourists and guides: original='{text[:30]}...', translations_count={len(response['translations'])}")
+    # Broadcast to all
     await sio_server.emit('transcript', response, room='tourists')
     await sio_server.emit('transcript', response, room='guides')
-    logger.info(f"[TRANSCRIPT] Emit complete")
+    
+    if is_final:
+        logger.info(f"[TRANSCRIPT] Broadcasted: '{text[:20]}...' (No server-side translation)")
 
 
 # (Imports merged with top section)

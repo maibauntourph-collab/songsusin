@@ -1349,17 +1349,36 @@ socket.on('guide_ready', () => {
 
 // NOTE: guide_status handler already defined above, this block removed to prevent duplicate
 // Transcript Receiver - Works for both Guide and Tourist
-socket.on('transcript', (data) => {
-    log("[Android Debug] Transcript received: " + JSON.stringify(data).substring(0, 200));
+// --- Client-Side Translation Logic ---
+async function translateClientSide(text, targetLang) {
+    if (!text || targetLang === 'original') return text;
+
+    try {
+        // Use Google Translate 'gtx' endpoint
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+        const response = await fetch(url);
+        const json = await response.json();
+
+        if (json && json[0]) {
+            return json[0].map(item => item[0]).join('');
+        }
+        return text;
+    } catch (e) {
+        log("[Translation] Error: " + e);
+        return text;
+    }
+}
+
+// Transcript Receiver - Works for both Guide and Tourist
+socket.on('transcript', async (data) => {
+    // log("[Android Debug] Transcript received: " + JSON.stringify(data).substring(0, 200));
 
     // IMPORTANT: If we receive transcript, guide MUST be online and broadcasting
-    // Update status display to ensure it's correct
     if (role === 'tourist') {
         const statusEl = document.getElementById('tourist-status');
         if (statusEl && !statusEl.textContent.includes("Broadcasting")) {
             statusEl.textContent = "Guide Broadcasting...";
             statusEl.style.color = "#28a745";
-            log("[Android Debug] Auto-corrected guide status to Broadcasting (transcript received)");
         }
     }
 
@@ -1371,8 +1390,21 @@ socket.on('transcript', (data) => {
 
     let displayText = data.original;
 
-    if (data.isFinal && langInfo !== 'original' && data.translations && data.translations[langInfo]) {
-        displayText = data.translations[langInfo];
+    // CLIENT-SIDE TRANSLATION LOGIC
+    if (role === 'tourist' && langInfo !== 'original' && langInfo !== 'ko') {
+        // If server sent translation (cached?), use it. Otherwise fetch.
+        if (data.translations && data.translations[langInfo]) {
+            displayText = data.translations[langInfo];
+        } else {
+            // Only translate FINAL results to save API calls and reduce flickering
+            if (data.isFinal) {
+                displayText = await translateClientSide(data.original, langInfo);
+            } else {
+                // For interim, show original + indicator? Or just show original.
+                // Showing original feels faster.
+                displayText = data.original;
+            }
+        }
     }
 
     // Function to update a box with "Message Bubble" logic
@@ -1410,15 +1442,7 @@ socket.on('transcript', (data) => {
     }
 
     if (role === 'guide' && guideBox) {
-        // For guide, we usually show original text
-        // But if we want to show translations too, it gets tricky to "flow" them.
-        // Let's stick to original for Guide's flow, or append translation in brackets?
-        let guideText = data.original;
-        if (data.isFinal && data.translations && data.translations['en']) {
-            // guideText += ` <small>(${data.translations['en']})</small>`;
-            // Keep it clean for the "Teleprompter" look
-        }
-        updateBox(guideBox, guideText, data.isFinal);
+        updateBox(guideBox, data.original, data.isFinal);
     }
 });
 
