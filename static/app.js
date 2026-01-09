@@ -27,6 +27,13 @@ window.setAudioMode = function (mode) {
     audioMode = mode;
     log("[Audio Mode] Set to: " + mode);
 
+    // UI Update
+    // ... (UI logic)
+
+    // Force stop STT if switching to recorder
+    if (mode === 'recorder' && recognition) {
+        try { recognition.stop(); } catch (e) { }
+    }
     const sttStatus = document.getElementById('stt-status');
     if (mode === 'stt') {
         if (sttStatus) sttStatus.textContent = "🎤 STT Mode: Speech-to-text enabled";
@@ -622,7 +629,7 @@ window.startBroadcast = async function () {
             recognition.onspeechend = () => log("[Android Debug] Speech Ended");
             recognition.onend = () => {
                 log("STT Engine: Ended (Will Auto-restart)");
-                if (isBroadcasting) {
+                if (isBroadcasting && audioMode === 'stt') {
                     // Android Chrome needs longer delay for STT restart
                     const isAndroid = /Android/i.test(navigator.userAgent);
                     const restartDelay = isAndroid ? 500 : 1000;
