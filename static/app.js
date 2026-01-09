@@ -19,6 +19,17 @@ let offlineMode = false;
 // On Android, these conflict - user must choose one
 let audioMode = 'stt'; // Default to STT mode
 
+// DOM Elements (Global Access)
+// Script is at end of body, so simple lookups work.
+const els = {
+    roleSel: document.getElementById('role-selection'),
+    guideCtrl: document.getElementById('guide-controls'),
+    touristCtrl: document.getElementById('tourist-controls'),
+    guideStatus: document.getElementById('guide-status'),
+    touristStatus: document.getElementById('tourist-status'),
+    guideMeter: document.getElementById('guide-meter')
+};
+
 window.setAudioMode = function (mode) {
     audioMode = mode;
     log("[Audio Mode] Set to: " + mode);
