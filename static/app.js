@@ -170,7 +170,7 @@ window.setGuideViewMode = function (mode) {
     if (btnSimple) btnSimple.style.background = "#6c757d";
     if (btnDev) btnDev.style.background = "#007bff";
 }
-}
+
 
 
 // --- Audio Context Handling (Tourist) ---
