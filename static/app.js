@@ -704,22 +704,12 @@ window.startBroadcast = async function () {
         setupAudioAnalysis(localStream, 'guide-meter');
 
         // Audio Mode Logic:
-        // - STT Mode: Try to use BOTH WebRTC + MediaRecorder (Hybrid) for robustness
-        // - Recorder Mode: MediaRecorder only (No STT)
-        // - Offline Mode: MediaRecorder only (No STT)
-
-        const forceRecorder = audioMode === 'recorder' || offlineMode;
-
-        // HYBRID MODE: Even in STT mode, we try to start MediaRecorder for WebSocket fallback
-        // This fixes the "STT works but no sound" issue if WebRTC fails on LAN.
-        // Android might block two mics, so we wrap in try-catch.
-        const isAndroid = /Android/i.test(navigator.userAgent);
-        // CRITICAL: Android CANNOT do both STT + MediaRecorder. It crashes STT.
-        // So we strictly DISABLE Hybrid on Android.
-        const enableHybridAudio = !isAndroid;
+        // - STT Mode: WebRTC Only (Cleanest for Android)
+        // - Recorder Mode: MediaRecorder Only (Audio Only, No STT)
+        // NO Hybrid Mode (avoids mic conflicts)
 
         if (useWebRTC) {
-            els.guideStatus.textContent = "Broadcasting (WebRTC)...";
+            els.guideStatus.textContent = "Broadcasting (STT Mode)...";
             createPeerConnection();
             localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
@@ -730,1137 +720,1098 @@ window.startBroadcast = async function () {
             await waitForICEGathering(pc);
             socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'guide' });
 
-            // ALWAYS try to set up fallback recorder (Hybrid)
-            try {
-                if (forceRecorder || enableHybridAudio) {
-                    setupFallbackRecorder(localStream);
-                    if (audioMode === 'stt' && !offlineMode) {
-                        els.guideStatus.textContent = "Broadcasting (Hybrid: WebRTC + STT + WS)";
-                        log("[Hybrid] Attempting to run MediaRecorder alongside STT");
-                    } else {
-                        els.guideStatus.textContent = "Broadcasting (Recorder Mode - Audio Only)";
-                        // Clear the "Listening..." default text
-                        updateGuideTranscriptUI("🚫 STT Disabled (Recorder Mode)", true);
-                    }
-                } else {
-                    // Android STT Mode case: Hybrid disabled
-                    if (audioMode === 'stt' && !offlineMode) {
-                        log("[Android] Hybrid Audio Disabled to protect STT");
-                        els.guideStatus.textContent = "Broadcasting (STT Mode - WebRTC Only)";
-                        // Warn user visually
-                        updateGuideTranscriptUI("ℹ️ Android STT Mode: Audio relies on WebRTC only (Hybrid disabled)", true);
-                    }
-                }
-            } catch (e) {
-                log("[Hybrid] MediaRecorder failed (likely Mic conflict with STT): " + e);
-                // If hybrid failed, we rely on WebRTC only
-                els.guideStatus.textContent = "Broadcasting (WebRTC + STT)";
-            }
-
-        } else {
-            // WebSocket-only mode
-            els.guideStatus.textContent = "Broadcasting (WebSocket)...";
-            // Must use recorder here
-            setupFallbackRecorder(localStream);
-
-            if (audioMode === 'stt' && !offlineMode) {
-                log("[STT Mode] WebSocket Only - Audio + STT");
-                els.guideStatus.textContent = "Broadcasting (WebSocket + STT)";
-            } else {
-                els.guideStatus.textContent = "Broadcasting (Recorder Mode - Audio Only)";
-                updateGuideTranscriptUI("🚫 STT Disabled (Recorder Mode)", true);
-            }
+            // STRICTLY WebRTC Only. No fallback recorder here to prevent Android crash.
+            log("[STT Mode] WebRTC active. Hybrid recorder disabled.");
+        } catch (err) {
+            log("Error starting broadcast: " + err);
+            stopBroadcast();
         }
-    } catch (err) {
-        log("Error starting broadcast: " + err);
-        stopBroadcast();
     }
-}
 
 window.stopBroadcast = function () {
-    log("Stop Broadcast clicked");
-    isBroadcasting = false;
+        log("Stop Broadcast clicked");
+        isBroadcasting = false;
 
-    // Notify server that broadcast stopped
-    socket.emit('stop_broadcast');
+        // Notify server that broadcast stopped
+        socket.emit('stop_broadcast');
 
-    // Update Buttons
-    const toggleBtn = document.getElementById('broadcast-toggle-btn');
-    const toolbarBtn = document.getElementById('toolbar-run-btn');
+        // Update Buttons
+        const toggleBtn = document.getElementById('broadcast-toggle-btn');
+        const toolbarBtn = document.getElementById('toolbar-run-btn');
 
-    if (toggleBtn) {
-        toggleBtn.innerHTML = "▶️ Start Broadcast";
-        toggleBtn.classList.add('btn-guide');
-        toggleBtn.classList.remove('btn-stop');
-        toggleBtn.style.background = ""; // Reset
+        if (toggleBtn) {
+            toggleBtn.innerHTML = "▶️ Start Broadcast";
+            toggleBtn.classList.add('btn-guide');
+            toggleBtn.classList.remove('btn-stop');
+            toggleBtn.style.background = ""; // Reset
+        }
+        if (toolbarBtn) toolbarBtn.innerHTML = "<span style='font-size: 1.5rem;'>▶️</span>";
+
+
+        if (pc) pc.close();
+        if (localStream) localStream.getTracks().forEach(track => track.stop());
+        if (wakeLock) {
+            wakeLock.release().then(() => wakeLock = null);
+        }
+
+        // Ideally we shouldn't reload to keep state, just reset
+        // location.reload(); 
+        // Manual reset:
+        els.guideStatus.textContent = "Ready (Paused)";
+
+        // Ensure we stay on Guide Page
+        els.roleSel.classList.add('hidden');
+        els.guideCtrl.classList.remove('hidden');
     }
-    if (toolbarBtn) toolbarBtn.innerHTML = "<span style='font-size: 1.5rem;'>▶️</span>";
 
+    // Data Counters
+    let txBytes = 0;
+    let rxBytes = 0;
 
-    if (pc) pc.close();
-    if (localStream) localStream.getTracks().forEach(track => track.stop());
-    if (wakeLock) {
-        wakeLock.release().then(() => wakeLock = null);
-    }
-
-    // Ideally we shouldn't reload to keep state, just reset
-    // location.reload(); 
-    // Manual reset:
-    els.guideStatus.textContent = "Ready (Paused)";
-
-    // Ensure we stay on Guide Page
-    els.roleSel.classList.add('hidden');
-    els.guideCtrl.classList.remove('hidden');
-}
-
-// Data Counters
-let txBytes = 0;
-let rxBytes = 0;
-
-function updateCounters() {
-    if (role === 'guide') {
-        const el = document.getElementById('guide-counter');
-        if (el) el.textContent = `TX: ${(txBytes / 1024).toFixed(1)} KB`;
-    } else if (role === 'tourist') {
-        const el = document.getElementById('tourist-counter');
-        if (el) el.textContent = `RX: ${(rxBytes / 1024).toFixed(1)} KB`;
-    }
-}
-
-function updateGuideTranscriptUI(text, isFinal) {
-    const guideBox = document.getElementById('guide-transcript-box');
-    if (!guideBox) return;
-
-    if (isFinal) {
-        guideBox.innerHTML = `<span style="color: #ccff00; text-shadow: 0 0 5px #ccff00;">${text}</span>`;
-    } else {
-        guideBox.innerHTML = `<span style="color: #fff;">${text}</span>`;
-    }
-}
-
-function getSupportedMimeType() {
-    const types = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/ogg;codecs=opus',
-        'audio/mp4',
-        'audio/aac'
-    ];
-    for (const type of types) {
-        if (MediaRecorder.isTypeSupported(type)) {
-            log("Selected MediaRecorder MIME: " + type);
-            return type;
+    function updateCounters() {
+        if (role === 'guide') {
+            const el = document.getElementById('guide-counter');
+            if (el) el.textContent = `TX: ${(txBytes / 1024).toFixed(1)} KB`;
+        } else if (role === 'tourist') {
+            const el = document.getElementById('tourist-counter');
+            if (el) el.textContent = `RX: ${(rxBytes / 1024).toFixed(1)} KB`;
         }
     }
-    return '';
-}
 
-function setupFallbackRecorder(stream) {
-    // Fallback: Send audio via WebSocket
-    let options = {};
-    const mimeType = getSupportedMimeType();
+    function updateGuideTranscriptUI(text, isFinal) {
+        const guideBox = document.getElementById('guide-transcript-box');
+        if (!guideBox) return;
 
-    if (mimeType) {
-        options = { mimeType: mimeType };
-    } else {
-        log("No MIME specified, using browser default");
+        if (isFinal) {
+            guideBox.innerHTML = `<span style="color: #ccff00; text-shadow: 0 0 5px #ccff00;">${text}</span>`;
+        } else {
+            guideBox.innerHTML = `<span style="color: #fff;">${text}</span>`;
+        }
     }
 
-    // Add audioBitsPerSecond for better Android compatibility
-    options.audioBitsPerSecond = 128000;
+    function getSupportedMimeType() {
+        const types = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/ogg;codecs=opus',
+            'audio/mp4',
+            'audio/aac'
+        ];
+        for (const type of types) {
+            if (MediaRecorder.isTypeSupported(type)) {
+                log("Selected MediaRecorder MIME: " + type);
+                return type;
+            }
+        }
+        return '';
+    }
 
-    try {
-        log("Creating MediaRecorder with options: " + JSON.stringify(options));
-        const recorder = new MediaRecorder(stream, options);
-        log("MediaRecorder created successfully. Actual mimeType: " + recorder.mimeType);
+    function setupFallbackRecorder(stream) {
+        // Fallback: Send audio via WebSocket
+        let options = {};
+        const mimeType = getSupportedMimeType();
 
-        recorder.ondataavailable = e => {
-            if (e.data.size > 0) {
-                // Log only occasionally to avoid spam, but log first few
-                if (txBytes === 0) log("Recorder produced first data: " + e.data.size + " bytes");
+        if (mimeType) {
+            options = { mimeType: mimeType };
+        } else {
+            log("No MIME specified, using browser default");
+        }
 
-                if (socket.connected) {
-                    socket.emit('binary_audio', e.data);
-                    txBytes += e.data.size;
-                    updateCounters();
+        // Add audioBitsPerSecond for better Android compatibility
+        options.audioBitsPerSecond = 128000;
+
+        try {
+            log("Creating MediaRecorder with options: " + JSON.stringify(options));
+            const recorder = new MediaRecorder(stream, options);
+            log("MediaRecorder created successfully. Actual mimeType: " + recorder.mimeType);
+
+            recorder.ondataavailable = e => {
+                if (e.data.size > 0) {
+                    // Log only occasionally to avoid spam, but log first few
+                    if (txBytes === 0) log("Recorder produced first data: " + e.data.size + " bytes");
+
+                    if (socket.connected) {
+                        socket.emit('binary_audio', e.data);
+                        txBytes += e.data.size;
+                        updateCounters();
+                    } else {
+                        log("Socket disconnected, dropping audio chunk");
+                        els.guideStatus.textContent = "Connection Lost! Reconnecting...";
+                        els.guideStatus.style.color = "red";
+                    }
                 } else {
-                    log("Socket disconnected, dropping audio chunk");
-                    els.guideStatus.textContent = "Connection Lost! Reconnecting...";
-                    els.guideStatus.style.color = "red";
+                    log("Recorder produced empty data (size=0)");
+                }
+            };
+
+            recorder.onstart = () => {
+                log("Recorder Started. Mime: " + recorder.mimeType + " State: " + recorder.state);
+                els.guideStatus.textContent = "Broadcasting (Dual Mode)";
+            };
+
+            recorder.onerror = (e) => {
+                log("Recorder Error: " + e.error);
+                els.guideStatus.textContent = "Recorder Error: " + e.error;
+            };
+
+            // Try 50ms for ultra-low latency
+            recorder.start(50);
+            log("Fallback Audio (WebSocket) Setup OK");
+
+        } catch (e) {
+            log("Fallback Setup Failed: " + e);
+            els.guideStatus.textContent = "Error: Recorder Init Failed (" + e + ")";
+        }
+    }
+
+    socket.on('reconnect_ack', () => {
+        log("Server acknowledged reconnect request.");
+        // Tourist relies on WebSocket fallback - no WebRTC retry needed
+    });
+
+    // --- Tourist Logic ---
+    function createPeerConnection() {
+        if (pc) pc.close();
+        pc = new RTCPeerConnection(rtcConfig);
+
+        pc.onicecandidate = (event) => {
+            // We usually don't need to send candidates with aiortc if we use a single offer/answer with all candidates gathered
+            // But for completeness:
+            // if (event.candidate) socket.emit('candidate', event.candidate);
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            log(`ICE State: ${pc.iceConnectionState}`);
+            if (role === 'tourist') {
+                els.touristStatus.textContent = `Status: ${pc.iceConnectionState}`;
+            }
+            if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                log("WebRTC Unstable (" + pc.iceConnectionState + ")");
+                // Tourist uses WebSocket fallback - no retry loop needed
+                els.touristStatus.textContent = "Using WebSocket audio...";
+                log("WebRTC failed - relying on WebSocket fallback");
+            } else if (pc.iceConnectionState === 'connected') {
+                log("ICE Connected!");
+                if (role === 'tourist' && els.touristStatus.textContent.includes("Waiting")) {
+                    els.touristStatus.textContent = "Connected. Waiting for audio...";
+                }
+            }
+        };
+
+        pc.ontrack = (event) => {
+            log("Track received! ID: " + event.track.id + " Kind: " + event.track.kind);
+
+            // CRITICAL FIX: Only Tourists should play the audio stream to prevent howling/feedback
+            if (role === 'tourist') {
+                els.touristStatus.textContent = "Receiving Audio Stream...";
+                const stream = event.streams[0];
+                webrtcAudioElement = new Audio(); // Assign to global
+                webrtcAudioElement.srcObject = stream;
+                webrtcAudioElement.autoplay = true;
+                webrtcAudioElement.playsInline = true;
+                webrtcAudioElement.controls = true; // Show controls to allow manual play if needed
+                webrtcAudioElement.style.marginTop = "20px";
+
+                // Respect current mode
+                if (ttsEnabled) webrtcAudioElement.muted = true;
+
+                document.body.appendChild(webrtcAudioElement);
+
+                // Setup Visualizer for Tourist
+                setupAudioAnalysis(stream, 'tourist-meter');
+
+                // Ensure playback
+                const playPromise = audio.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(_ => {
+                        log("Audio playing");
+                        els.touristStatus.textContent = "Audio Playing!";
+                    }).catch(error => {
+                        log("Auto-play blocked: " + error);
+                        els.touristStatus.textContent = "Click 'Tap to Enable Audio' again";
+                        document.getElementById('play-btn').style.display = 'block';
+                        // Re-bind click to play this specific audio
+                        document.getElementById('play-btn').onclick = () => {
+                            audio.play();
+                            document.getElementById('play-btn').style.display = 'none';
+                        };
+                    });
                 }
             } else {
-                log("Recorder produced empty data (size=0)");
+                log("Ignoring incoming track (Guide Mode) to prevent echo.");
             }
-        };
+        }
+    } // End createPeerConnection
 
-        recorder.onstart = () => {
-            log("Recorder Started. Mime: " + recorder.mimeType + " State: " + recorder.state);
-            els.guideStatus.textContent = "Broadcasting (Dual Mode)";
-        };
+    // --- Signaling ---
+    // NOTE: Transcript handler moved to unified handler below (line ~1134)
 
-        recorder.onerror = (e) => {
-            log("Recorder Error: " + e.error);
-            els.guideStatus.textContent = "Recorder Error: " + e.error;
-        };
+    let ttsEnabled = false; // Now represents "AI Voice Mode"
+    let webrtcAudioElement = null; // Global reference for muting
 
-        // Try 50ms for ultra-low latency
-        recorder.start(50);
-        log("Fallback Audio (WebSocket) Setup OK");
+    function speakText(text, lang) {
+        if (!('speechSynthesis' in window) || !ttsEnabled) return; // Only speak if enabled
 
-    } catch (e) {
-        log("Fallback Setup Failed: " + e);
-        els.guideStatus.textContent = "Error: Recorder Init Failed (" + e + ")";
+        // Stop any current speech (debounced?)
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = lang === 'original' ? 'ko-KR' : lang;
+
+        // Adjust language code for Google TTS
+        if (utterance.lang === 'en') utterance.lang = 'en-US';
+        if (utterance.lang === 'ja') utterance.lang = 'ja-JP';
+        if (utterance.lang === 'zh-CN') utterance.lang = 'zh-CN';
+
+        window.speechSynthesis.speak(utterance);
     }
-}
 
-socket.on('reconnect_ack', () => {
-    log("Server acknowledged reconnect request.");
-    // Tourist relies on WebSocket fallback - no WebRTC retry needed
-});
+    document.addEventListener('DOMContentLoaded', () => {
+        const ttsBtn = document.getElementById('tts-btn');
+        if (ttsBtn) {
+            // Set initial state UI
+            ttsBtn.textContent = "🎧 Live Voice";
+            ttsBtn.style.background = "#007bff"; // Blue for Live
 
-// --- Tourist Logic ---
-function createPeerConnection() {
-    if (pc) pc.close();
-    pc = new RTCPeerConnection(rtcConfig);
+            ttsBtn.onclick = () => {
+                ttsEnabled = !ttsEnabled;
 
-    pc.onicecandidate = (event) => {
-        // We usually don't need to send candidates with aiortc if we use a single offer/answer with all candidates gathered
-        // But for completeness:
-        // if (event.candidate) socket.emit('candidate', event.candidate);
-    };
+                if (ttsEnabled) {
+                    // Switch to AI Mode
+                    ttsBtn.textContent = "🤖 AI Voice";
+                    ttsBtn.style.background = "#e83e8c"; // Pink/Purple for AI
 
-    pc.oniceconnectionstatechange = () => {
-        log(`ICE State: ${pc.iceConnectionState}`);
-        if (role === 'tourist') {
-            els.touristStatus.textContent = `Status: ${pc.iceConnectionState}`;
+                    // Mute Live Audio
+                    if (webrtcAudioElement) webrtcAudioElement.muted = true;
+                    if (fallbackAudioElement) fallbackAudioElement.muted = true;
+
+                    // Test speech
+                    speakText("AI Voice Enabled", "en");
+                    log("[Audio] Switched to AI Voice (Live Muted)");
+                } else {
+                    // Switch to Live Mode
+                    ttsBtn.textContent = "🎧 Live Voice";
+                    ttsBtn.style.background = "#007bff";
+
+                    // Unmute Live Audio
+                    if (webrtcAudioElement) webrtcAudioElement.muted = false;
+                    if (fallbackAudioElement) fallbackAudioElement.muted = false;
+
+                    window.speechSynthesis.cancel();
+                    log("[Audio] Switched to Live Voice (TTS Off)");
+                }
+            };
         }
-        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-            log("WebRTC Unstable (" + pc.iceConnectionState + ")");
-            // Tourist uses WebSocket fallback - no retry loop needed
-            els.touristStatus.textContent = "Using WebSocket audio...";
-            log("WebRTC failed - relying on WebSocket fallback");
-        } else if (pc.iceConnectionState === 'connected') {
-            log("ICE Connected!");
-            if (role === 'tourist' && els.touristStatus.textContent.includes("Waiting")) {
-                els.touristStatus.textContent = "Connected. Waiting for audio...";
+    });
+    // Guide status handler - unified handler at line ~1065
+    socket.on('guide_status', (data) => {
+        log("Guide Status Update: " + JSON.stringify(data));
+        const statusEl = document.getElementById('tourist-status');
+        if (!statusEl) return;
+
+        if (data.broadcasting) {
+            statusEl.textContent = "🎙️ Guide is Live (Broadcasting)";
+            statusEl.style.color = "#28a745";
+            statusEl.style.fontWeight = "bold";
+
+            if (role === 'tourist' && touristAudioActive) {
+                log("Guide is broadcasting, requesting audio init and starting receiver...");
+                socket.emit('request_audio_init');
+                if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+                    startTouristReceiver();
+                }
             }
-        }
-    };
-
-    pc.ontrack = (event) => {
-        log("Track received! ID: " + event.track.id + " Kind: " + event.track.kind);
-
-        // CRITICAL FIX: Only Tourists should play the audio stream to prevent howling/feedback
-        if (role === 'tourist') {
-            els.touristStatus.textContent = "Receiving Audio Stream...";
-            const stream = event.streams[0];
-            webrtcAudioElement = new Audio(); // Assign to global
-            webrtcAudioElement.srcObject = stream;
-            webrtcAudioElement.autoplay = true;
-            webrtcAudioElement.playsInline = true;
-            webrtcAudioElement.controls = true; // Show controls to allow manual play if needed
-            webrtcAudioElement.style.marginTop = "20px";
-
-            // Respect current mode
-            if (ttsEnabled) webrtcAudioElement.muted = true;
-
-            document.body.appendChild(webrtcAudioElement);
-
-            // Setup Visualizer for Tourist
-            setupAudioAnalysis(stream, 'tourist-meter');
-
-            // Ensure playback
-            const playPromise = audio.play();
-            if (playPromise !== undefined) {
-                playPromise.then(_ => {
-                    log("Audio playing");
-                    els.touristStatus.textContent = "Audio Playing!";
-                }).catch(error => {
-                    log("Auto-play blocked: " + error);
-                    els.touristStatus.textContent = "Click 'Tap to Enable Audio' again";
-                    document.getElementById('play-btn').style.display = 'block';
-                    // Re-bind click to play this specific audio
-                    document.getElementById('play-btn').onclick = () => {
-                        audio.play();
-                        document.getElementById('play-btn').style.display = 'none';
-                    };
-                });
-            }
+        } else if (data.online) {
+            statusEl.textContent = "✅ Guide Online (Waiting to Start)";
+            statusEl.style.color = "#007bff";
+            statusEl.style.fontWeight = "normal";
         } else {
-            log("Ignoring incoming track (Guide Mode) to prevent echo.");
+            statusEl.textContent = "❌ Guide Offline";
+            statusEl.style.color = "#dc3545";
+            statusEl.style.fontWeight = "normal";
+        }
+    });
+
+    socket.on('guide_ready', () => {
+        log("Guide Ready (WebRTC Track Active)");
+        const statusEl = document.getElementById('tourist-status');
+        if (statusEl) {
+            statusEl.textContent = "🎙️ Audio Receiving...";
+            statusEl.style.color = "#28a745";
+        }
+        if (role === 'tourist' && touristAudioActive) {
+            // startTouristReceiver(); // Handled by play button or auto-retry
+        }
+    });
+
+    socket.on('connect', () => {
+        log("Socket.IO Connected");
+        els.touristStatus.textContent = "Connected to Server";
+        els.guideStatus.style.color = ""; // Reset color
+        document.body.style.borderTop = "5px solid #28a745"; // Visual connection indicator
+        if (role) {
+            // Re-join if we were already there (Reconnect logic)
+            const langSel = document.getElementById('lang-select');
+            const lang = langSel ? langSel.value : 'en';
+            socket.emit('join_room', { role: role, language: lang });
+        }
+    });
+
+    socket.on('disconnect', () => {
+        log("Socket Disconnected! Auto-rejoining...");
+    });
+
+    // Tourist receives an offer (or answer, usually SFU logic flows differently).
+    // In our server.py, the server waits for an Offer from the client? 
+    // Wait, `server.py` logic:
+    // Guide sends Offer. Server answers.
+    // Tourist sends Offer? 
+    // Let's check `server.py`:
+    // `if role == 'tourist': ... await pc.setRemoteDescription... await pc.createAnswer()`
+    // So Tourist MUST send Offer first to receive the track.
+
+    // Correction for Tourist Logic:
+    async function startTouristReceiver() {
+        createPeerConnection();
+        // Add Transceiver to receive Audio only
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        log("Gathering ICE candidates...");
+        await waitForICEGathering(pc);
+        log("ICE Gathering Complete");
+
+        socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'tourist' });
+    }
+
+    socket.on('connection_success', (data) => {
+        // If I am a tourist, I should start the negotiation immediately to get the stream?
+        // Or wait for the guide? Use the `join_room` to trigger?
+        // Let's trigger manual 'Start' for tourist is safer for "Tap to Play"
+    });
+
+    // Merged selectRole logic
+    window.selectRole = function (r) {
+        log("Role selected: " + r);
+        role = r;
+        els.roleSel.classList.add('hidden');
+
+        // Get selected language for tourists
+        const langSel = document.getElementById('lang-select');
+        const lang = langSel ? langSel.value : 'en';
+
+        if (role === 'guide') {
+            els.guideCtrl.classList.remove('hidden');
+        } else {
+            els.touristCtrl.classList.remove('hidden');
+            initAudioContext();
+            touristAudioActive = true;
+            els.touristStatus.textContent = "Waiting for Guide...";
+            // Ensure we try to connect if guide is already live
+            socket.emit('request_guide_status');
+        }
+        socket.emit('join_room', { role: role, language: lang });
+    }
+
+    // Handle language change for tourists
+    window.onLanguageChange = function (selectEl) {
+        const lang = selectEl.value;
+        log("Language changed to: " + lang);
+        socket.emit('update_language', { language: lang });
+    }
+
+    // Full teardown of all tourist audio resources
+    function teardownTouristAudio() {
+        log("Tearing down tourist audio...");
+
+        // Close WebRTC
+        if (pc) {
+            pc.close();
+            pc = null;
+        }
+
+        // Close fallback audio
+        if (fallbackAudioElement) {
+            fallbackAudioElement.pause();
+            fallbackAudioElement.remove();
+            fallbackAudioElement = null;
+        }
+        if (mediaSource && mediaSource.readyState === 'open') {
+            try { mediaSource.endOfStream(); } catch (e) { }
+        }
+        mediaSource = null;
+        sourceBuffer = null;
+        isFallbackActive = false;
+        pendingBuffers = [];
+        sourceBufferReady = false;
+        initReceived = false;
+    }
+
+    // Reset fallback state only (keeps WebRTC intact)
+    function resetFallbackState() {
+        if (fallbackAudioElement) {
+            fallbackAudioElement.pause();
+            fallbackAudioElement.remove();
+            fallbackAudioElement = null;
+        }
+        if (mediaSource && mediaSource.readyState === 'open') {
+            try { mediaSource.endOfStream(); } catch (e) { }
+        }
+        mediaSource = null;
+        sourceBuffer = null;
+        isFallbackActive = false;
+        pendingBuffers = [];
+        sourceBufferReady = false;
+        initReceived = false;
+    }
+
+
+    socket.on('answer', async (data) => {
+        log("Received Answer");
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(data));
+        } catch (e) {
+            log("Error setting remote desc: " + e);
+        }
+    });
+
+    // Fallback Binary Audio - MediaSource Extension streaming
+    let fallbackAudioElement = null;
+    let mediaSource = null;
+    let sourceBuffer = null;
+    let isFallbackActive = false;
+    let pendingBuffers = [];
+    let sourceBufferReady = false;
+    let initReceived = false;
+
+    function initMediaSourceFallback() {
+        if (mediaSource) return;
+
+        fallbackAudioElement = document.createElement('audio');
+        fallbackAudioElement.autoplay = true;
+        fallbackAudioElement.controls = true;
+        fallbackAudioElement.style.marginTop = '20px';
+        fallbackAudioElement.style.width = '100%';
+
+        // Respect current mode
+        if (ttsEnabled) fallbackAudioElement.muted = true;
+
+        const container = document.getElementById('tourist-controls');
+        if (container) container.appendChild(fallbackAudioElement);
+
+        mediaSource = new MediaSource();
+        fallbackAudioElement.src = URL.createObjectURL(mediaSource);
+
+        mediaSource.addEventListener('sourceopen', () => {
+            log("MediaSource opened for streaming");
+
+            try {
+                sourceBuffer = mediaSource.addSourceBuffer('audio/webm; codecs=opus');
+                sourceBuffer.mode = 'sequence';
+                sourceBufferReady = true;
+
+                sourceBuffer.addEventListener('updateend', flushPendingBuffers);
+                sourceBuffer.addEventListener('error', (e) => log("SourceBuffer error: " + e));
+
+                flushPendingBuffers();
+                log("SourceBuffer ready for audio/webm; codecs=opus");
+            } catch (e) {
+                log("SourceBuffer creation failed: " + e);
+                sourceBufferReady = false;
+            }
+        });
+
+        mediaSource.addEventListener('error', (e) => log("MediaSource error: " + e));
+
+        fallbackAudioElement.play().catch(e => {
+            log("Autoplay blocked: " + e);
+            els.touristStatus.textContent = "Tap to enable audio playback";
+        });
+
+        document.body.addEventListener('click', () => {
+            if (fallbackAudioElement && fallbackAudioElement.paused) {
+                fallbackAudioElement.play().catch(() => { });
+            }
+        }, { once: true });
+    }
+
+    function flushPendingBuffers() {
+        if (!sourceBufferReady || !sourceBuffer || sourceBuffer.updating) return;
+        if (!initReceived) {
+            return;
+        }
+        if (pendingBuffers.length === 0) return;
+
+        const buffer = pendingBuffers.shift();
+        try {
+            sourceBuffer.appendBuffer(buffer);
+            els.touristStatus.textContent = "Playing Audio (Stream)";
+        } catch (e) {
+            if (e.name === 'QuotaExceededError') {
+                try {
+                    const buffered = sourceBuffer.buffered;
+                    if (buffered.length > 0 && buffered.start(0) < buffered.end(0) - 10) {
+                        sourceBuffer.remove(buffered.start(0), buffered.end(0) - 5);
+                    }
+                } catch (removeErr) {
+                    log("Buffer cleanup failed: " + removeErr);
+                }
+            } else {
+                log("AppendBuffer error: " + e);
+            }
         }
     }
-} // End createPeerConnection
 
-// --- Signaling ---
-// NOTE: Transcript handler moved to unified handler below (line ~1134)
-
-let ttsEnabled = false; // Now represents "AI Voice Mode"
-let webrtcAudioElement = null; // Global reference for muting
-
-function speakText(text, lang) {
-    if (!('speechSynthesis' in window) || !ttsEnabled) return; // Only speak if enabled
-
-    // Stop any current speech (debounced?)
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = lang === 'original' ? 'ko-KR' : lang;
-
-    // Adjust language code for Google TTS
-    if (utterance.lang === 'en') utterance.lang = 'en-US';
-    if (utterance.lang === 'ja') utterance.lang = 'ja-JP';
-    if (utterance.lang === 'zh-CN') utterance.lang = 'zh-CN';
-
-    window.speechSynthesis.speak(utterance);
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    const ttsBtn = document.getElementById('tts-btn');
-    if (ttsBtn) {
-        // Set initial state UI
-        ttsBtn.textContent = "🎧 Live Voice";
-        ttsBtn.style.background = "#007bff"; // Blue for Live
-
-        ttsBtn.onclick = () => {
-            ttsEnabled = !ttsEnabled;
-
-            if (ttsEnabled) {
-                // Switch to AI Mode
-                ttsBtn.textContent = "🤖 AI Voice";
-                ttsBtn.style.background = "#e83e8c"; // Pink/Purple for AI
-
-                // Mute Live Audio
-                if (webrtcAudioElement) webrtcAudioElement.muted = true;
-                if (fallbackAudioElement) fallbackAudioElement.muted = true;
-
-                // Test speech
-                speakText("AI Voice Enabled", "en");
-                log("[Audio] Switched to AI Voice (Live Muted)");
-            } else {
-                // Switch to Live Mode
-                ttsBtn.textContent = "🎧 Live Voice";
-                ttsBtn.style.background = "#007bff";
-
-                // Unmute Live Audio
-                if (webrtcAudioElement) webrtcAudioElement.muted = false;
-                if (fallbackAudioElement) fallbackAudioElement.muted = false;
-
-                window.speechSynthesis.cancel();
-                log("[Audio] Switched to Live Voice (TTS Off)");
-            }
+    function appendToStream(data) {
+        const toArrayBuffer = (input) => {
+            if (input instanceof ArrayBuffer) return Promise.resolve(input);
+            if (input instanceof Blob) return input.arrayBuffer();
+            if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
+            return Promise.resolve(null);
         };
+
+        toArrayBuffer(data).then(buffer => {
+            if (!buffer) return;
+
+            pendingBuffers.push(buffer);
+
+            if (pendingBuffers.length > 50) {
+                pendingBuffers = pendingBuffers.slice(-30);
+                log("Buffer overflow, trimmed to 30");
+            }
+
+            flushPendingBuffers();
+        });
     }
-});
-// Guide status handler - unified handler at line ~1065
-socket.on('guide_status', (data) => {
-    log("Guide Status Update: " + JSON.stringify(data));
-    const statusEl = document.getElementById('tourist-status');
-    if (!statusEl) return;
 
-    if (data.broadcasting) {
-        statusEl.textContent = "🎙️ Guide is Live (Broadcasting)";
-        statusEl.style.color = "#28a745";
-        statusEl.style.fontWeight = "bold";
+    socket.on('audio_init', (data) => {
+        // Ignore audio if tourist has stopped listening
+        if (!touristAudioActive) return;
 
-        if (role === 'tourist' && touristAudioActive) {
-            log("Guide is broadcasting, requesting audio init and starting receiver...");
+        log("Received audio init segment from server");
+
+        const toArrayBuffer = (input) => {
+            if (input instanceof ArrayBuffer) return Promise.resolve(input);
+            if (input instanceof Blob) return input.arrayBuffer();
+            if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
+            return Promise.resolve(null);
+        };
+
+        toArrayBuffer(data).then(buffer => {
+            if (!buffer) return;
+
+            pendingBuffers.unshift(buffer);
+            initReceived = true;
+            log("Init segment prepended, " + pendingBuffers.length + " buffers queued");
+            flushPendingBuffers();
+        });
+    });
+
+    socket.on('audio_chunk', (data) => {
+        // Ignore audio if tourist has stopped listening
+        if (!touristAudioActive) return;
+
+        rxBytes += data.byteLength || data.size || 0;
+        updateCounters();
+
+        if (!isFallbackActive) {
+            isFallbackActive = true;
+            els.touristStatus.textContent = "Buffering audio...";
+            log("Starting MediaSource fallback stream");
+            initMediaSourceFallback();
             socket.emit('request_audio_init');
+        }
+
+        appendToStream(data);
+    });
+
+
+    // --- Smart Signaling: Handle Late Join / Guide Restart ---
+    socket.on('guide_ready', () => {
+        log("Guide is ready!");
+        if (role === 'tourist' && touristAudioActive) {
+            els.touristStatus.textContent = "Guide Online. Connecting...";
+            // Only start if we don't have an active connection
             if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+                log("Starting tourist connection on guide_ready");
+                teardownTouristAudio();
                 startTouristReceiver();
             }
         }
-    } else if (data.online) {
-        statusEl.textContent = "✅ Guide Online (Waiting to Start)";
-        statusEl.style.color = "#007bff";
-        statusEl.style.fontWeight = "normal";
-    } else {
-        statusEl.textContent = "❌ Guide Offline";
-        statusEl.style.color = "#dc3545";
-        statusEl.style.fontWeight = "normal";
-    }
-});
+    });
 
-socket.on('guide_ready', () => {
-    log("Guide Ready (WebRTC Track Active)");
-    const statusEl = document.getElementById('tourist-status');
-    if (statusEl) {
-        statusEl.textContent = "🎙️ Audio Receiving...";
-        statusEl.style.color = "#28a745";
-    }
-    if (role === 'tourist' && touristAudioActive) {
-        // startTouristReceiver(); // Handled by play button or auto-retry
-    }
-});
-
-socket.on('connect', () => {
-    log("Socket.IO Connected");
-    els.touristStatus.textContent = "Connected to Server";
-    els.guideStatus.style.color = ""; // Reset color
-    document.body.style.borderTop = "5px solid #28a745"; // Visual connection indicator
-    if (role) {
-        // Re-join if we were already there (Reconnect logic)
-        const langSel = document.getElementById('lang-select');
-        const lang = langSel ? langSel.value : 'en';
-        socket.emit('join_room', { role: role, language: lang });
-    }
-});
-
-socket.on('disconnect', () => {
-    log("Socket Disconnected! Auto-rejoining...");
-});
-
-// Tourist receives an offer (or answer, usually SFU logic flows differently).
-// In our server.py, the server waits for an Offer from the client? 
-// Wait, `server.py` logic:
-// Guide sends Offer. Server answers.
-// Tourist sends Offer? 
-// Let's check `server.py`:
-// `if role == 'tourist': ... await pc.setRemoteDescription... await pc.createAnswer()`
-// So Tourist MUST send Offer first to receive the track.
-
-// Correction for Tourist Logic:
-async function startTouristReceiver() {
-    createPeerConnection();
-    // Add Transceiver to receive Audio only
-    pc.addTransceiver('audio', { direction: 'recvonly' });
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    log("Gathering ICE candidates...");
-    await waitForICEGathering(pc);
-    log("ICE Gathering Complete");
-
-    socket.emit('offer', { sdp: pc.localDescription.sdp, type: pc.localDescription.type, role: 'tourist' });
-}
-
-socket.on('connection_success', (data) => {
-    // If I am a tourist, I should start the negotiation immediately to get the stream?
-    // Or wait for the guide? Use the `join_room` to trigger?
-    // Let's trigger manual 'Start' for tourist is safer for "Tap to Play"
-});
-
-// Merged selectRole logic
-window.selectRole = function (r) {
-    log("Role selected: " + r);
-    role = r;
-    els.roleSel.classList.add('hidden');
-
-    // Get selected language for tourists
-    const langSel = document.getElementById('lang-select');
-    const lang = langSel ? langSel.value : 'en';
-
-    if (role === 'guide') {
-        els.guideCtrl.classList.remove('hidden');
-    } else {
-        els.touristCtrl.classList.remove('hidden');
-        initAudioContext();
-        touristAudioActive = true;
-        els.touristStatus.textContent = "Waiting for Guide...";
-        // Ensure we try to connect if guide is already live
-        socket.emit('request_guide_status');
-    }
-    socket.emit('join_room', { role: role, language: lang });
-}
-
-// Handle language change for tourists
-window.onLanguageChange = function (selectEl) {
-    const lang = selectEl.value;
-    log("Language changed to: " + lang);
-    socket.emit('update_language', { language: lang });
-}
-
-// Full teardown of all tourist audio resources
-function teardownTouristAudio() {
-    log("Tearing down tourist audio...");
-
-    // Close WebRTC
-    if (pc) {
-        pc.close();
-        pc = null;
-    }
-
-    // Close fallback audio
-    if (fallbackAudioElement) {
-        fallbackAudioElement.pause();
-        fallbackAudioElement.remove();
-        fallbackAudioElement = null;
-    }
-    if (mediaSource && mediaSource.readyState === 'open') {
-        try { mediaSource.endOfStream(); } catch (e) { }
-    }
-    mediaSource = null;
-    sourceBuffer = null;
-    isFallbackActive = false;
-    pendingBuffers = [];
-    sourceBufferReady = false;
-    initReceived = false;
-}
-
-// Reset fallback state only (keeps WebRTC intact)
-function resetFallbackState() {
-    if (fallbackAudioElement) {
-        fallbackAudioElement.pause();
-        fallbackAudioElement.remove();
-        fallbackAudioElement = null;
-    }
-    if (mediaSource && mediaSource.readyState === 'open') {
-        try { mediaSource.endOfStream(); } catch (e) { }
-    }
-    mediaSource = null;
-    sourceBuffer = null;
-    isFallbackActive = false;
-    pendingBuffers = [];
-    sourceBufferReady = false;
-    initReceived = false;
-}
-
-
-socket.on('answer', async (data) => {
-    log("Received Answer");
-    try {
-        await pc.setRemoteDescription(new RTCSessionDescription(data));
-    } catch (e) {
-        log("Error setting remote desc: " + e);
-    }
-});
-
-// Fallback Binary Audio - MediaSource Extension streaming
-let fallbackAudioElement = null;
-let mediaSource = null;
-let sourceBuffer = null;
-let isFallbackActive = false;
-let pendingBuffers = [];
-let sourceBufferReady = false;
-let initReceived = false;
-
-function initMediaSourceFallback() {
-    if (mediaSource) return;
-
-    fallbackAudioElement = document.createElement('audio');
-    fallbackAudioElement.autoplay = true;
-    fallbackAudioElement.controls = true;
-    fallbackAudioElement.style.marginTop = '20px';
-    fallbackAudioElement.style.width = '100%';
-
-    // Respect current mode
-    if (ttsEnabled) fallbackAudioElement.muted = true;
-
-    const container = document.getElementById('tourist-controls');
-    if (container) container.appendChild(fallbackAudioElement);
-
-    mediaSource = new MediaSource();
-    fallbackAudioElement.src = URL.createObjectURL(mediaSource);
-
-    mediaSource.addEventListener('sourceopen', () => {
-        log("MediaSource opened for streaming");
+    // NOTE: guide_status handler already defined above, this block removed to prevent duplicate
+    // Transcript Receiver - Works for both Guide and Tourist
+    // --- Client-Side Translation Logic ---
+    async function translateClientSide(text, targetLang) {
+        if (!text || targetLang === 'original') return text;
 
         try {
-            sourceBuffer = mediaSource.addSourceBuffer('audio/webm; codecs=opus');
-            sourceBuffer.mode = 'sequence';
-            sourceBufferReady = true;
+            // Use Google Translate 'gtx' endpoint
+            const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+            const response = await fetch(url);
+            const json = await response.json();
 
-            sourceBuffer.addEventListener('updateend', flushPendingBuffers);
-            sourceBuffer.addEventListener('error', (e) => log("SourceBuffer error: " + e));
-
-            flushPendingBuffers();
-            log("SourceBuffer ready for audio/webm; codecs=opus");
+            if (json && json[0]) {
+                return json[0].map(item => item[0]).join('');
+            }
+            return text;
         } catch (e) {
-            log("SourceBuffer creation failed: " + e);
-            sourceBufferReady = false;
+            log("[Translation] Error: " + e);
+            return text;
         }
-    });
-
-    mediaSource.addEventListener('error', (e) => log("MediaSource error: " + e));
-
-    fallbackAudioElement.play().catch(e => {
-        log("Autoplay blocked: " + e);
-        els.touristStatus.textContent = "Tap to enable audio playback";
-    });
-
-    document.body.addEventListener('click', () => {
-        if (fallbackAudioElement && fallbackAudioElement.paused) {
-            fallbackAudioElement.play().catch(() => { });
-        }
-    }, { once: true });
-}
-
-function flushPendingBuffers() {
-    if (!sourceBufferReady || !sourceBuffer || sourceBuffer.updating) return;
-    if (!initReceived) {
-        return;
     }
-    if (pendingBuffers.length === 0) return;
 
-    const buffer = pendingBuffers.shift();
-    try {
-        sourceBuffer.appendBuffer(buffer);
-        els.touristStatus.textContent = "Playing Audio (Stream)";
-    } catch (e) {
-        if (e.name === 'QuotaExceededError') {
-            try {
-                const buffered = sourceBuffer.buffered;
-                if (buffered.length > 0 && buffered.start(0) < buffered.end(0) - 10) {
-                    sourceBuffer.remove(buffered.start(0), buffered.end(0) - 5);
-                }
-            } catch (removeErr) {
-                log("Buffer cleanup failed: " + removeErr);
+    // Transcript Receiver - Works for both Guide and Tourist
+    socket.on('transcript', async (data) => {
+        // log("[Android Debug] Transcript received: " + JSON.stringify(data).substring(0, 200));
+
+        // IMPORTANT: If we receive transcript, guide MUST be online and broadcasting
+        if (role === 'tourist') {
+            const statusEl = document.getElementById('tourist-status');
+            if (statusEl && !statusEl.textContent.includes("Broadcasting")) {
+                statusEl.textContent = "Guide Broadcasting...";
+                statusEl.style.color = "#28a745";
             }
-        } else {
-            log("AppendBuffer error: " + e);
-        }
-    }
-}
-
-function appendToStream(data) {
-    const toArrayBuffer = (input) => {
-        if (input instanceof ArrayBuffer) return Promise.resolve(input);
-        if (input instanceof Blob) return input.arrayBuffer();
-        if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
-        return Promise.resolve(null);
-    };
-
-    toArrayBuffer(data).then(buffer => {
-        if (!buffer) return;
-
-        pendingBuffers.push(buffer);
-
-        if (pendingBuffers.length > 50) {
-            pendingBuffers = pendingBuffers.slice(-30);
-            log("Buffer overflow, trimmed to 30");
         }
 
-        flushPendingBuffers();
-    });
-}
+        const touristBox = document.getElementById('transcript-box');
+        const guideBox = document.getElementById('guide-transcript-box');
+        const langSelect = document.getElementById('lang-select');
+        const langInfo = langSelect ? langSelect.value : 'original';
+        const ttsBtn = document.getElementById('tts-btn');
 
-socket.on('audio_init', (data) => {
-    // Ignore audio if tourist has stopped listening
-    if (!touristAudioActive) return;
+        let displayText = data.original;
 
-    log("Received audio init segment from server");
-
-    const toArrayBuffer = (input) => {
-        if (input instanceof ArrayBuffer) return Promise.resolve(input);
-        if (input instanceof Blob) return input.arrayBuffer();
-        if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
-        return Promise.resolve(null);
-    };
-
-    toArrayBuffer(data).then(buffer => {
-        if (!buffer) return;
-
-        pendingBuffers.unshift(buffer);
-        initReceived = true;
-        log("Init segment prepended, " + pendingBuffers.length + " buffers queued");
-        flushPendingBuffers();
-    });
-});
-
-socket.on('audio_chunk', (data) => {
-    // Ignore audio if tourist has stopped listening
-    if (!touristAudioActive) return;
-
-    rxBytes += data.byteLength || data.size || 0;
-    updateCounters();
-
-    if (!isFallbackActive) {
-        isFallbackActive = true;
-        els.touristStatus.textContent = "Buffering audio...";
-        log("Starting MediaSource fallback stream");
-        initMediaSourceFallback();
-        socket.emit('request_audio_init');
-    }
-
-    appendToStream(data);
-});
-
-
-// --- Smart Signaling: Handle Late Join / Guide Restart ---
-socket.on('guide_ready', () => {
-    log("Guide is ready!");
-    if (role === 'tourist' && touristAudioActive) {
-        els.touristStatus.textContent = "Guide Online. Connecting...";
-        // Only start if we don't have an active connection
-        if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
-            log("Starting tourist connection on guide_ready");
-            teardownTouristAudio();
-            startTouristReceiver();
-        }
-    }
-});
-
-// NOTE: guide_status handler already defined above, this block removed to prevent duplicate
-// Transcript Receiver - Works for both Guide and Tourist
-// --- Client-Side Translation Logic ---
-async function translateClientSide(text, targetLang) {
-    if (!text || targetLang === 'original') return text;
-
-    try {
-        // Use Google Translate 'gtx' endpoint
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-        const response = await fetch(url);
-        const json = await response.json();
-
-        if (json && json[0]) {
-            return json[0].map(item => item[0]).join('');
-        }
-        return text;
-    } catch (e) {
-        log("[Translation] Error: " + e);
-        return text;
-    }
-}
-
-// Transcript Receiver - Works for both Guide and Tourist
-socket.on('transcript', async (data) => {
-    // log("[Android Debug] Transcript received: " + JSON.stringify(data).substring(0, 200));
-
-    // IMPORTANT: If we receive transcript, guide MUST be online and broadcasting
-    if (role === 'tourist') {
-        const statusEl = document.getElementById('tourist-status');
-        if (statusEl && !statusEl.textContent.includes("Broadcasting")) {
-            statusEl.textContent = "Guide Broadcasting...";
-            statusEl.style.color = "#28a745";
-        }
-    }
-
-    const touristBox = document.getElementById('transcript-box');
-    const guideBox = document.getElementById('guide-transcript-box');
-    const langSelect = document.getElementById('lang-select');
-    const langInfo = langSelect ? langSelect.value : 'original';
-    const ttsBtn = document.getElementById('tts-btn');
-
-    let displayText = data.original;
-
-    // CLIENT-SIDE TRANSLATION LOGIC
-    if (role === 'tourist' && langInfo !== 'original' && langInfo !== 'ko') {
-        // If server sent translation (cached?), use it. Otherwise fetch.
-        if (data.translations && data.translations[langInfo]) {
-            displayText = data.translations[langInfo];
-        } else {
-            // Only translate FINAL results to save API calls and reduce flickering
-            if (data.isFinal) {
-                displayText = await translateClientSide(data.original, langInfo);
+        // CLIENT-SIDE TRANSLATION LOGIC
+        if (role === 'tourist' && langInfo !== 'original' && langInfo !== 'ko') {
+            // If server sent translation (cached?), use it. Otherwise fetch.
+            if (data.translations && data.translations[langInfo]) {
+                displayText = data.translations[langInfo];
             } else {
-                // For interim, show original + indicator? Or just show original.
-                // Showing original feels faster.
-                displayText = data.original;
+                // Only translate FINAL results to save API calls and reduce flickering
+                if (data.isFinal) {
+                    displayText = await translateClientSide(data.original, langInfo);
+                } else {
+                    // For interim, show original + indicator? Or just show original.
+                    // Showing original feels faster.
+                    displayText = data.original;
+                }
             }
         }
-    }
 
-    // Function to update a box with "Message Bubble" logic
-    const updateBox = (box, text, isFinal) => {
-        // Remove old temp segment if exists
-        const oldTemp = box.querySelector('#temp-seg');
-        if (oldTemp) oldTemp.remove();
+        // Function to update a box with "Message Bubble" logic
+        const updateBox = (box, text, isFinal) => {
+            // Remove old temp segment if exists
+            const oldTemp = box.querySelector('#temp-seg');
+            if (oldTemp) oldTemp.remove();
 
-        const bubble = document.createElement('div');
-        bubble.className = isFinal ? 'message-bubble final' : 'message-bubble interim';
-        if (!isFinal) bubble.id = 'temp-seg';
+            const bubble = document.createElement('div');
+            bubble.className = isFinal ? 'message-bubble final' : 'message-bubble interim';
+            if (!isFinal) bubble.id = 'temp-seg';
 
-        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-        bubble.innerHTML = `
+            bubble.innerHTML = `
             <span class="message-timestamp">${timestamp}</span>
             <div class="message-content highlight-pen">${text}</div>
         `;
 
-        box.appendChild(bubble);
-        box.scrollTop = box.scrollHeight;
+            box.appendChild(bubble);
+            box.scrollTop = box.scrollHeight;
+        };
+
+        if (role === 'tourist' && touristBox) {
+            updateBox(touristBox, displayText, data.isFinal);
+
+            if (data.isFinal && ttsEnabled) {
+                const utterance = new SpeechSynthesisUtterance(displayText);
+                // ... (language logic)
+                if (langInfo === 'en') utterance.lang = 'en-US';
+                else if (langInfo === 'ja') utterance.lang = 'ja-JP';
+                else if (langInfo === 'zh-CN') utterance.lang = 'zh-CN';
+                else utterance.lang = 'ko-KR';
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        if (role === 'guide' && guideBox) {
+            updateBox(guideBox, data.original, data.isFinal);
+        }
+    });
+
+    // TTS Toggle (Moved to DOMContentLoaded above)
+    // const ttsBtn = document.getElementById('tts-btn'); ... REMOVED
+
+    // Background Audio Fix (Wake Lock for Tourist)
+    async function enableBackgroundMode() {
+        try {
+            if ('wakeLock' in navigator) {
+                await navigator.wakeLock.request('screen');
+                log("Tourist Screen Wake Lock active");
+            }
+        } catch (e) {
+            log("WakeLock fail: " + e);
+        }
+    }
+
+    // Hook WakeLock into Tourist Start
+    const origStart = window.startTouristReceiver; // Assuming it's reachable or we hook into selectRole
+    // Actually best to hook into initAudioContext or play button
+    const playBtn = document.getElementById('play-btn');
+    if (playBtn) {
+        playBtn.addEventListener('click', () => {
+            enableBackgroundMode();
+        });
+    }
+
+    // --- Guide Admin Functions ---
+    window.addPlace = async function () {
+        const name = document.getElementById('place-name').value;
+        const desc = document.getElementById('place-desc').value;
+        const status = document.getElementById('admin-status');
+
+        if (!name) {
+            status.textContent = "Error: Name is required.";
+            status.style.color = "red";
+            return;
+        }
+
+        status.textContent = "Adding...";
+        status.style.color = "yellow";
+
+        try {
+            const res = await fetch('/add_place', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, description: desc })
+            });
+
+            let data;
+            try {
+                data = await res.json();
+            } catch (jsonError) {
+                throw new Error(`Server returned non-JSON response: ${res.status}`);
+            }
+
+            if (res.ok && data.status === 'success') {
+                status.textContent = data.message || "Place added successfully.";
+                status.style.color = "#ccff00";
+                // Clear inputs
+                document.getElementById('place-name').value = "";
+                document.getElementById('place-desc').value = "";
+                loadPlaces(); // Refresh list
+            } else {
+                // Handle cases where message might be undefined
+                let msg = data.message || data.detail || "Unknown Server Error";
+                if (typeof msg === 'object') {
+                    msg = JSON.stringify(msg);
+                }
+                status.textContent = "Error: " + msg;
+                status.style.color = "red";
+            }
+        } catch (e) {
+            console.error("AddPlace Error:", e);
+            status.textContent = "Network/Client Error: " + e.message;
+            status.style.color = "red";
+        }
     };
 
-    if (role === 'tourist' && touristBox) {
-        updateBox(touristBox, displayText, data.isFinal);
+    window.uploadExcel = async function () {
+        const fileInput = document.getElementById('excel-file');
+        const status = document.getElementById('admin-status');
 
-        if (data.isFinal && ttsEnabled) {
-            const utterance = new SpeechSynthesisUtterance(displayText);
-            // ... (language logic)
-            if (langInfo === 'en') utterance.lang = 'en-US';
-            else if (langInfo === 'ja') utterance.lang = 'ja-JP';
-            else if (langInfo === 'zh-CN') utterance.lang = 'zh-CN';
-            else utterance.lang = 'ko-KR';
-            window.speechSynthesis.speak(utterance);
+        if (fileInput.files.length === 0) {
+            status.textContent = "Error: Please select a file.";
+            status.style.color = "red";
+            return;
         }
-    }
 
-    if (role === 'guide' && guideBox) {
-        updateBox(guideBox, data.original, data.isFinal);
-    }
-});
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
 
-// TTS Toggle (Moved to DOMContentLoaded above)
-// const ttsBtn = document.getElementById('tts-btn'); ... REMOVED
+        status.textContent = "Uploading...";
+        status.style.color = "yellow";
 
-// Background Audio Fix (Wake Lock for Tourist)
-async function enableBackgroundMode() {
-    try {
-        if ('wakeLock' in navigator) {
-            await navigator.wakeLock.request('screen');
-            log("Tourist Screen Wake Lock active");
-        }
-    } catch (e) {
-        log("WakeLock fail: " + e);
-    }
-}
-
-// Hook WakeLock into Tourist Start
-const origStart = window.startTouristReceiver; // Assuming it's reachable or we hook into selectRole
-// Actually best to hook into initAudioContext or play button
-const playBtn = document.getElementById('play-btn');
-if (playBtn) {
-    playBtn.addEventListener('click', () => {
-        enableBackgroundMode();
-    });
-}
-
-// --- Guide Admin Functions ---
-window.addPlace = async function () {
-    const name = document.getElementById('place-name').value;
-    const desc = document.getElementById('place-desc').value;
-    const status = document.getElementById('admin-status');
-
-    if (!name) {
-        status.textContent = "Error: Name is required.";
-        status.style.color = "red";
-        return;
-    }
-
-    status.textContent = "Adding...";
-    status.style.color = "yellow";
-
-    try {
-        const res = await fetch('/add_place', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, description: desc })
-        });
-
-        let data;
         try {
-            data = await res.json();
-        } catch (jsonError) {
-            throw new Error(`Server returned non-JSON response: ${res.status}`);
-        }
-
-        if (res.ok && data.status === 'success') {
-            status.textContent = data.message || "Place added successfully.";
-            status.style.color = "#ccff00";
-            // Clear inputs
-            document.getElementById('place-name').value = "";
-            document.getElementById('place-desc').value = "";
-            loadPlaces(); // Refresh list
-        } else {
-            // Handle cases where message might be undefined
-            let msg = data.message || data.detail || "Unknown Server Error";
-            if (typeof msg === 'object') {
-                msg = JSON.stringify(msg);
-            }
-            status.textContent = "Error: " + msg;
-            status.style.color = "red";
-        }
-    } catch (e) {
-        console.error("AddPlace Error:", e);
-        status.textContent = "Network/Client Error: " + e.message;
-        status.style.color = "red";
-    }
-};
-
-window.uploadExcel = async function () {
-    const fileInput = document.getElementById('excel-file');
-    const status = document.getElementById('admin-status');
-
-    if (fileInput.files.length === 0) {
-        status.textContent = "Error: Please select a file.";
-        status.style.color = "red";
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-
-    status.textContent = "Uploading...";
-    status.style.color = "yellow";
-
-    try {
-        const res = await fetch('/upload_places', {
-            method: 'POST',
-            body: formData
-        });
-
-        const contentType = res.headers.get("content-type");
-        let data;
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-            data = await res.json();
-        } else {
-            const text = await res.text();
-            throw new Error(`Server Error (${res.status}): ${text.substring(0, 100)}...`);
-        }
-
-        if (data.status === 'success') {
-            status.textContent = data.message;
-            status.style.color = "#ccff00";
-            fileInput.value = ""; // Clear file
-            loadPlaces(); // Refresh list
-        } else {
-            let msg = data.message || data.detail || "Unknown Upload Error";
-            if (typeof msg === 'object') {
-                msg = JSON.stringify(msg);
-            }
-            status.textContent = "Error: " + msg;
-            status.style.color = "red";
-        }
-    } catch (e) {
-        status.textContent = "Upload Failed: " + e.message;
-        status.style.color = "red";
-    }
-};
-
-window.loadPlaces = async function () {
-    try {
-        const res = await fetch('/places');
-        const data = await res.json();
-        const container = document.getElementById('places-list');
-        if (!container) return;
-
-        container.innerHTML = ""; // Clear
-
-        if (data.places && data.places.length > 0) {
-            data.places.forEach(place => {
-                const div = document.createElement('div');
-                div.className = 'place-item';
-                div.style.cssText = "background: #333; padding: 10px; margin-bottom: 8px; border-radius: 5px; cursor: pointer; border: 1px solid #555; display: flex; justify-content: space-between; align-items: center;";
-
-                // Add click event to broadcast
-                // Prevent quick double clicks? 
-                div.onclick = () => broadcastPlaceInfo(place);
-
-                const info = document.createElement('div');
-                info.innerHTML = `<strong style='color: #fff;'>${place.name}</strong><br><span style='color: #aaa; font-size: 0.8rem;'>${place.description ? place.description.substring(0, 30) + '...' : 'No desc'}</span>`;
-
-                const btn = document.createElement('button');
-                btn.textContent = "📢 Send";
-                btn.style.cssText = "background: #17a2b8; border: none; color: white; padding: 5px 10px; border-radius: 4px; font-size: 0.8rem;";
-
-                div.appendChild(info);
-                div.appendChild(btn);
-                container.appendChild(div);
+            const res = await fetch('/upload_places', {
+                method: 'POST',
+                body: formData
             });
-        } else {
-            container.innerHTML = "<div style='color: #888; font-style: italic;'>No places registered yet.</div>";
+
+            const contentType = res.headers.get("content-type");
+            let data;
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                data = await res.json();
+            } else {
+                const text = await res.text();
+                throw new Error(`Server Error (${res.status}): ${text.substring(0, 100)}...`);
+            }
+
+            if (data.status === 'success') {
+                status.textContent = data.message;
+                status.style.color = "#ccff00";
+                fileInput.value = ""; // Clear file
+                loadPlaces(); // Refresh list
+            } else {
+                let msg = data.message || data.detail || "Unknown Upload Error";
+                if (typeof msg === 'object') {
+                    msg = JSON.stringify(msg);
+                }
+                status.textContent = "Error: " + msg;
+                status.style.color = "red";
+            }
+        } catch (e) {
+            status.textContent = "Upload Failed: " + e.message;
+            status.style.color = "red";
         }
-    } catch (e) {
-        log("Error loading places: " + e);
+    };
+
+    window.loadPlaces = async function () {
+        try {
+            const res = await fetch('/places');
+            const data = await res.json();
+            const container = document.getElementById('places-list');
+            if (!container) return;
+
+            container.innerHTML = ""; // Clear
+
+            if (data.places && data.places.length > 0) {
+                data.places.forEach(place => {
+                    const div = document.createElement('div');
+                    div.className = 'place-item';
+                    div.style.cssText = "background: #333; padding: 10px; margin-bottom: 8px; border-radius: 5px; cursor: pointer; border: 1px solid #555; display: flex; justify-content: space-between; align-items: center;";
+
+                    // Add click event to broadcast
+                    // Prevent quick double clicks? 
+                    div.onclick = () => broadcastPlaceInfo(place);
+
+                    const info = document.createElement('div');
+                    info.innerHTML = `<strong style='color: #fff;'>${place.name}</strong><br><span style='color: #aaa; font-size: 0.8rem;'>${place.description ? place.description.substring(0, 30) + '...' : 'No desc'}</span>`;
+
+                    const btn = document.createElement('button');
+                    btn.textContent = "📢 Send";
+                    btn.style.cssText = "background: #17a2b8; border: none; color: white; padding: 5px 10px; border-radius: 4px; font-size: 0.8rem;";
+
+                    div.appendChild(info);
+                    div.appendChild(btn);
+                    container.appendChild(div);
+                });
+            } else {
+                container.innerHTML = "<div style='color: #888; font-style: italic;'>No places registered yet.</div>";
+            }
+        } catch (e) {
+            log("Error loading places: " + e);
+        }
     }
-}
 
-window.broadcastPlaceInfo = function (place) {
-    if (!place.description) {
-        alert("This place has no description to broadcast.");
-        return;
+    window.broadcastPlaceInfo = function (place) {
+        if (!place.description) {
+            alert("This place has no description to broadcast.");
+            return;
+        }
+
+        // Broadcast as functionality (Guide -> Server -> Tourist)
+        // Re-use transcript_msg but maybe with a flag or just plain text
+        // The server will translate it and send it back as 'final'
+        socket.emit('transcript_msg', { text: place.description, source_lang: 'ko', isFinal: true });
+        log("Broadcasting info for: " + place.name);
+
+        // Also show locally in Guide's transcript box
+        const guideBox = document.getElementById('guide-transcript-box');
+        if (guideBox) {
+            guideBox.innerHTML = `<span style="color: #17a2b8;">[Info] ${place.name}: ${place.description}</span>`;
+        }
     }
 
-    // Broadcast as functionality (Guide -> Server -> Tourist)
-    // Re-use transcript_msg but maybe with a flag or just plain text
-    // The server will translate it and send it back as 'final'
-    socket.emit('transcript_msg', { text: place.description, source_lang: 'ko', isFinal: true });
-    log("Broadcasting info for: " + place.name);
-
-    // Also show locally in Guide's transcript box
-    const guideBox = document.getElementById('guide-transcript-box');
-    if (guideBox) {
-        guideBox.innerHTML = `<span style="color: #17a2b8;">[Info] ${place.name}: ${place.description}</span>`;
+    // Auto-load on start if Guide
+    // Hook into SelectRole or just expose it
+    // Better: When opening the Admin Panel or just initially.
+    // Let's call it when role is selected as guide.
+    const origSelectRole = window.selectRole;
+    window.selectRole = function (r) {
+        origSelectRole(r);
+        if (r === 'guide') {
+            setTimeout(loadPlaces, 500); // Load after UI switches
+        }
     }
-}
 
-// Auto-load on start if Guide
-// Hook into SelectRole or just expose it
-// Better: When opening the Admin Panel or just initially.
-// Let's call it when role is selected as guide.
-const origSelectRole = window.selectRole;
-window.selectRole = function (r) {
-    origSelectRole(r);
-    if (r === 'guide') {
-        setTimeout(loadPlaces, 500); // Load after UI switches
-    }
-}
+    // History Functions
+    window.loadHistory = async function () {
+        try {
+            const res = await fetch('/history');
+            const data = await res.json();
+            const container = document.getElementById('history-list');
+            if (!container) return;
 
-// History Functions
-window.loadHistory = async function () {
-    try {
-        const res = await fetch('/history');
-        const data = await res.json();
-        const container = document.getElementById('history-list');
-        if (!container) return;
+            container.innerHTML = "";
 
-        container.innerHTML = "";
+            if (data.history && data.history.length > 0) {
+                data.history.forEach(item => {
+                    const div = document.createElement('div');
+                    div.style.cssText = "border-bottom: 1px solid #444; padding: 5px; margin-bottom: 5px;";
 
-        if (data.history && data.history.length > 0) {
-            data.history.forEach(item => {
-                const div = document.createElement('div');
-                div.style.cssText = "border-bottom: 1px solid #444; padding: 5px; margin-bottom: 5px;";
-
-                const time = new Date(item.created_at).toLocaleTimeString();
-                div.innerHTML = `
+                    const time = new Date(item.created_at).toLocaleTimeString();
+                    div.innerHTML = `
                     <div style="color: #888; font-size: 0.7rem;">${time}</div>
                     <div style="color: #fff; margin-top: 2px;">${item.text}</div>
                     <div style="color: #aaa; font-size: 0.8rem; margin-top: 2px;">
                         EN: ${item.translations?.en || '-'}
                     </div>
                 `;
-                container.appendChild(div);
-            });
-        } else {
-            container.innerHTML = "<div style='color: #888; font-style: italic;'>No history found.</div>";
-        }
-    } catch (e) {
-        log("History Error: " + e);
-    }
-}
-
-window.downloadHistory = async function () {
-    try {
-        const res = await fetch('/history');
-        const data = await res.json();
-
-        if (!data.history || data.history.length === 0) {
-            alert("No history to download.");
-            return;
-        }
-
-        let txt = "== Mobile Guide Session Log ==\n\n";
-        data.history.forEach(item => {
-            txt += `[${item.created_at}] ${item.text}\n`;
-            if (item.translations) {
-                txt += `   (EN): ${item.translations.en || '-'}\n`;
-                txt += `   (JP): ${item.translations.ja || '-'}\n`;
-                txt += `   (CN): ${item.translations['zh-CN'] || '-'}\n`;
+                    container.appendChild(div);
+                });
+            } else {
+                container.innerHTML = "<div style='color: #888; font-style: italic;'>No history found.</div>";
             }
-            txt += "----------------------------\n";
-        });
-
-        const blob = new Blob([txt], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "session_history.txt";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    } catch (e) {
-        alert("Download failed: " + e);
+        } catch (e) {
+            log("History Error: " + e);
+        }
     }
-}
 
-window.loadRecordings = async function () {
-    try {
-        const res = await fetch('/api/recordings');
-        const data = await res.json();
-        const container = document.getElementById('recording-list');
-        if (!container) return;
+    window.downloadHistory = async function () {
+        try {
+            const res = await fetch('/history');
+            const data = await res.json();
 
-        container.innerHTML = "";
+            if (!data.history || data.history.length === 0) {
+                alert("No history to download.");
+                return;
+            }
 
-        if (data.files && data.files.length > 0) {
-            data.files.forEach(file => {
-                const div = document.createElement('div');
-                div.style.cssText = "border-bottom: 1px solid #444; padding: 5px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;";
+            let txt = "== Mobile Guide Session Log ==\n\n";
+            data.history.forEach(item => {
+                txt += `[${item.created_at}] ${item.text}\n`;
+                if (item.translations) {
+                    txt += `   (EN): ${item.translations.en || '-'}\n`;
+                    txt += `   (JP): ${item.translations.ja || '-'}\n`;
+                    txt += `   (CN): ${item.translations['zh-CN'] || '-'}\n`;
+                }
+                txt += "----------------------------\n";
+            });
 
-                div.innerHTML = `
+            const blob = new Blob([txt], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "session_history.txt";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            alert("Download failed: " + e);
+        }
+    }
+
+    window.loadRecordings = async function () {
+        try {
+            const res = await fetch('/api/recordings');
+            const data = await res.json();
+            const container = document.getElementById('recording-list');
+            if (!container) return;
+
+            container.innerHTML = "";
+
+            if (data.files && data.files.length > 0) {
+                data.files.forEach(file => {
+                    const div = document.createElement('div');
+                    div.style.cssText = "border-bottom: 1px solid #444; padding: 5px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;";
+
+                    div.innerHTML = `
                     <span style="color: #ddd; font-size: 0.8rem;">${file}</span>
                     <a href="/recordings/${file}" download style="background: #28a745; color: white; text-decoration: none; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">Download</a>
                 `;
-                container.appendChild(div);
-            });
-        } else {
-            container.innerHTML = "<div style='color: #888; font-style: italic;'>No recordings found.</div>";
-        }
-    } catch (e) {
-        log("Rec Error: " + e);
-    }
-}
-
-
-window.summarizeSession = async function () {
-    const status = document.getElementById('admin-status') || els.touristStatus;
-    if (status) status.textContent = "Generating AI summary...";
-
-    try {
-        const res = await fetch('/summarize', { method: 'POST' });
-        const data = await res.json();
-
-        if (data.status === 'success') {
-            const summaryText = data.summary;
-            alert("Session Summary:\n\n" + summaryText);
-            if (status) status.textContent = "Summary generated!";
-        } else {
-            alert("Error: " + (data.message || "Failed to generate summary"));
-            if (status) status.textContent = "Summary failed";
-        }
-    } catch (e) {
-        alert("Summary error: " + e);
-        if (status) status.textContent = "Error";
-    }
-}
-
-window.downloadTranscript = async function () {
-    try {
-        window.location.href = '/download_transcript';
-    } catch (e) {
-        alert("Download error: " + e);
-    }
-}
-
-window.clearSession = async function () {
-    if (!confirm("Are you sure you want to clear all session transcripts? This cannot be undone.")) {
-        return;
-    }
-
-    const status = document.getElementById('admin-status');
-    if (status) status.textContent = "Clearing session...";
-
-    try {
-        const res = await fetch('/clear_session', { method: 'POST' });
-        const data = await res.json();
-
-        if (data.status === 'success') {
-            alert("Session cleared successfully!");
-            if (status) status.textContent = "Session cleared";
-            loadHistory();
-        } else {
-            alert("Error: " + (data.message || "Failed to clear session"));
-            if (status) status.textContent = "Clear failed";
-        }
-    } catch (e) {
-        alert("Clear error: " + e);
-        if (status) status.textContent = "Error";
-    }
-}
-
-window.confirmShutdown = async function () {
-    if (confirm("Are you sure you want to STOP the server?")) {
-        try {
-            await fetch('/shutdown', { method: 'POST' });
-            alert("Server is shutting down...");
-            document.body.innerHTML = "<h1 style='color:white; text-align:center; margin-top:50px;'>Server Stopped</h1>";
+                    container.appendChild(div);
+                });
+            } else {
+                container.innerHTML = "<div style='color: #888; font-style: italic;'>No recordings found.</div>";
+            }
         } catch (e) {
-            alert("Error stopping: " + e);
+            log("Rec Error: " + e);
         }
     }
-}
 
-window.confirmRestart = async function () {
-    if (confirm("⚠️ SYSTEM RESTART ⚠️\n\nAre you sure you want to RESTART the server?\nAll current connections will be reset.")) {
+
+    window.summarizeSession = async function () {
+        const status = document.getElementById('admin-status') || els.touristStatus;
+        if (status) status.textContent = "Generating AI summary...";
+
         try {
-            await fetch('/restart', { method: 'POST' });
-            alert("Server is restarting... Please wait 5 seconds and refresh.");
-            setTimeout(() => { location.reload(); }, 5000);
+            const res = await fetch('/summarize', { method: 'POST' });
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                const summaryText = data.summary;
+                alert("Session Summary:\n\n" + summaryText);
+                if (status) status.textContent = "Summary generated!";
+            } else {
+                alert("Error: " + (data.message || "Failed to generate summary"));
+                if (status) status.textContent = "Summary failed";
+            }
         } catch (e) {
-            alert("Error restarting: " + e);
+            alert("Summary error: " + e);
+            if (status) status.textContent = "Error";
         }
     }
-}
+
+    window.downloadTranscript = async function () {
+        try {
+            window.location.href = '/download_transcript';
+        } catch (e) {
+            alert("Download error: " + e);
+        }
+    }
+
+    window.clearSession = async function () {
+        if (!confirm("Are you sure you want to clear all session transcripts? This cannot be undone.")) {
+            return;
+        }
+
+        const status = document.getElementById('admin-status');
+        if (status) status.textContent = "Clearing session...";
+
+        try {
+            const res = await fetch('/clear_session', { method: 'POST' });
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                alert("Session cleared successfully!");
+                if (status) status.textContent = "Session cleared";
+                loadHistory();
+            } else {
+                alert("Error: " + (data.message || "Failed to clear session"));
+                if (status) status.textContent = "Clear failed";
+            }
+        } catch (e) {
+            alert("Clear error: " + e);
+            if (status) status.textContent = "Error";
+        }
+    }
+
+    window.confirmShutdown = async function () {
+        if (confirm("Are you sure you want to STOP the server?")) {
+            try {
+                await fetch('/shutdown', { method: 'POST' });
+                alert("Server is shutting down...");
+                document.body.innerHTML = "<h1 style='color:white; text-align:center; margin-top:50px;'>Server Stopped</h1>";
+            } catch (e) {
+                alert("Error stopping: " + e);
+            }
+        }
+    }
+
+    window.confirmRestart = async function () {
+        if (confirm("⚠️ SYSTEM RESTART ⚠️\n\nAre you sure you want to RESTART the server?\nAll current connections will be reset.")) {
+            try {
+                await fetch('/restart', { method: 'POST' });
+                alert("Server is restarting... Please wait 5 seconds and refresh.");
+                setTimeout(() => { location.reload(); }, 5000);
+            } catch (e) {
+                alert("Error restarting: " + e);
+            }
+        }
+    }
 
