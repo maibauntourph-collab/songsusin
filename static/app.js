@@ -904,9 +904,10 @@ function updateGuideTranscriptUI(text, isFinal) {
 
 function getSupportedMimeType() {
     const types = [
-        'audio/mp4', // Try MP4 first (iOS/Newer Android) for best cross-platform if supported
-        'audio/webm;codecs=opus', // Standard WebM Opus
-        'audio/webm', // Generic WebM
+        'audio/webm;codecs=opus', // ✅ WebM 우선 (더 호환성 좋음)
+        'audio/webm',
+        'audio/mp4', // iOS 호환
+        'audio/mp4; codecs=opus',
         'audio/ogg;codecs=opus',
         'audio/aac'
     ];
