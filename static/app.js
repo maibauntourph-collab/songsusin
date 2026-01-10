@@ -74,12 +74,20 @@ function detectOfflineMode() {
     const isLocalIP = /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|localhost|127\.0\.0\.1)/.test(location.hostname);
     const isOffline = !navigator.onLine;
 
-    if (isOffline || (isLocalIP && !navigator.onLine)) {
+    // 로컬 IP에서는 navigator.onLine을 신뢰하지 않음 (안드로이드 버그)
+    if (isLocalIP) {
+        log("[Network] Local IP detected - assuming online, STT enabled");
+        offlineMode = false;  // 로컬 네트워크에서는 온라인으로 간주
+        return false;
+    }
+
+    if (isOffline) {
         offlineMode = true;
-        log("[Offline Mode] Detected offline/local environment - STT disabled, audio-only mode");
+        log("[Offline Mode] Detected offline environment - STT disabled, audio-only mode");
         return true;
     }
-    return false;
+
+    offlineMode = false;
     return false;
 }
 
