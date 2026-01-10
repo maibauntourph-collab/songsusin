@@ -287,18 +287,35 @@ function updatePlayButton() {
 function initAudioContext() {
     try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContext();
+        if (!audioCtx) {
+            audioCtx = new AudioContext();
+        }
+
         log("AudioContext State: " + audioCtx.state);
         updatePlayButton();
 
+        // Robust Resume Logic
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume().then(() => {
+                log("AudioContext resumed successfully (init)");
+            });
+        }
+
+        // Global One-time Resume Trigger (User Interaction)
+        document.body.addEventListener('click', () => {
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().then(() => log("AudioContext resumed by click"));
+            }
+        }, { once: true });
+
         // Background Audio Hack (Silent Loop)
-        // This keeps the AudioContext active even when screen is locked/backgrounded on iOS/Android
+        // ... (Keep existing logic if needed, or rely on resume)
         if (!dummyAudio) {
             dummyAudio = document.createElement('audio');
             // Tiny silent mp3 base64
             dummyAudio.src = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjIwLjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD//////////////////////////////////////////////////////////////////wAAAP//OEAAAAAAAAAAAAAAAAAAAAAATEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//OEAAAAAAAAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAA==';
             dummyAudio.loop = true;
-            dummyAudio.volume = 0.01; // Not perfectly 0 to avoid being "optimized out" by some OS
+            dummyAudio.volume = 0.01;
             document.body.appendChild(dummyAudio);
         }
 
@@ -1530,15 +1547,31 @@ socket.on('audio_chunk', (data) => {
 
 
 // --- Smart Signaling: Handle Late Join / Guide Restart ---
-socket.on('guide_ready', () => {
-    log("Guide is ready!");
+// --- Smart Signaling: Handle Late Join / Guide Restart ---
+socket.on('guide_ready', (data) => {
+    log("Guide Status Update: " + JSON.stringify(data));
+
+    // Check global 'webRTCStreamer' instead of raw pc
     if (role === 'tourist' && touristAudioActive) {
-        els.touristStatus.textContent = "Guide Online. Connecting...";
-        // Only start if we don't have an active connection
-        if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
-            log("Starting tourist connection on guide_ready");
-            teardownTouristAudio();
-            startTouristReceiver(); // This will eventually use the new streamer logic if fully migrated
+        if (data && data.broadcasting === true) {
+            // If already connected, skip
+            if (webRTCStreamer.pc && webRTCStreamer.pc.connectionState === 'connected') {
+                log("Already connected, skipping init.");
+                return;
+            }
+
+            // Force Cleanup & Restart
+            webRTCStreamer.cleanupConnection();
+            els.touristStatus.textContent = "Guide Restarted. Reconnecting...";
+
+            setTimeout(() => {
+                webRTCStreamer.connect();
+            }, 500);
+
+        } else {
+            // Guide Stopped
+            webRTCStreamer.cleanupConnection();
+            els.touristStatus.textContent = "방송 대기중...";
         }
     }
 });
@@ -1611,22 +1644,31 @@ class WebRTCAudioStreamer {
             });
         }
 
-        // Broadcast Start
-        const offer = await this.pc.createOffer();
+        // Broadcast Start (ICE Restart for robust reconnection)
+        const offer = await this.pc.createOffer({ iceRestart: true });
         await this.pc.setLocalDescription(offer);
-        socket.emit('start_broadcast'); // Trigger server allocation
-        // Server will request offer, or we send it? 
-        // Existing logic sends offer via 'offer' event usually.
-        // Let's align with existing signaling: 
-        // Guide sends offer to Start Session? No, usually Guide waits for viewer?
-        // Wait, typical SFU: Publisher sends offer to SFU.
-        // Current app.js logic: Guide sends 'offer'.
+        socket.emit('start_broadcast');
 
         socket.emit('offer', { sdp: this.pc.localDescription.sdp, type: this.pc.localDescription.type, role: 'guide' });
-        log("[WebRTCAudioStreamer] Guide Offer sent");
+        log("[WebRTCAudioStreamer] Guide Offer sent (iceRestart: true)");
+    }
+
+    cleanupConnection() {
+        log("[WebRTCAudioStreamer] Cleaning up connection...");
+        if (this.pc) {
+            this.pc.onicecandidate = null;
+            this.pc.ontrack = null;
+            this.pc.close();
+            this.pc = null;
+        }
+        // Audio Context cleanup if needed (usually handled globally)
     }
 
     async startTouristSession() {
+        // Ensure AudioContext is ready
+        initAudioContext();
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+
         this.createPeerConnection();
         this.pc.addTransceiver('audio', { direction: 'recvonly' });
 
