@@ -17,7 +17,7 @@ let offlineMode = false;
 
 // Audio Mode: 'stt' for speech-to-text, 'recorder' for MediaRecorder audio streaming
 // On Android, these conflict - user must choose one
-let audioMode = 'stt'; // Default to STT mode
+let audioMode = 'recorder'; // Default to Recorder Mode (Audio Only)
 
 // DOM Elements (Global Access) - Removed duplicate declaration here.
 // See robust definition below (~line 141)
