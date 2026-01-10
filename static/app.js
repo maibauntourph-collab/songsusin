@@ -1345,10 +1345,12 @@ function initMediaSourceFallback() {
     mediaSource.addEventListener('sourceopen', () => {
         log("MediaSource opened for streaming");
 
-        // Detect supported MIME type
+        // Detect supported MIME type - MUST Match Sender Priorities
         const mimeTypes = [
             'audio/webm; codecs=opus',
+            'audio/ogg; codecs=opus',
             'audio/webm',
+            'audio/mp4; codecs=opus',
             'audio/mp4'
         ];
         let selectedMime = '';
@@ -1383,6 +1385,10 @@ function initMediaSourceFallback() {
     });
 
     mediaSource.addEventListener('error', (e) => log("MediaSource error: " + e));
+    mediaSource.addEventListener('sourceclose', () => {
+        log("MediaSource closed!");
+        sourceBufferReady = false;
+    });
 
     fallbackAudioElement.play().catch(e => {
         log("Autoplay blocked: " + e);
@@ -1398,11 +1404,13 @@ function initMediaSourceFallback() {
 
 function flushPendingBuffers() {
     if (!sourceBufferReady || !sourceBuffer || sourceBuffer.updating) return;
-    // if (!initReceived) {
-    //    return;
-    // }
-    // BYPASS: Allow stream to play even without explicit init packet
-    // WebM streams from MediaRecorder usually start with header anyway
+
+    // Safety Check: MediaSource must be open
+    if (!mediaSource || mediaSource.readyState !== 'open') {
+        // log("MediaSource not open (" + (mediaSource ? mediaSource.readyState : 'null') + "), buffering...");
+        return;
+    }
+
     if (pendingBuffers.length === 0) return;
 
     const buffer = pendingBuffers.shift();
@@ -1421,6 +1429,9 @@ function flushPendingBuffers() {
             } catch (removeErr) {
                 log("Buffer cleanup failed: " + removeErr);
             }
+        } else if (e.name === 'InvalidStateError') {
+            log("Critical: SourceBuffer invalid state. Resetting fallback...");
+            resetFallbackState();
         } else {
             log("AppendBuffer error: " + e);
         }
