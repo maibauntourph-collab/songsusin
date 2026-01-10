@@ -1451,9 +1451,12 @@ function appendToStream(data) {
 
         pendingBuffers.push(buffer);
 
+        // STALL DETECTION: If buffer allows to grow too large, the MSE is likely stuck.
         if (pendingBuffers.length > 50) {
-            pendingBuffers = pendingBuffers.slice(-30);
-            log("Buffer overflow, trimmed to 30");
+            log("[Critical] Buffer Stall Detected (50+ chunks). Force resetting MediaSource...");
+            // Force reset to unstick the pipeline
+            resetFallbackState();
+            return;
         }
 
         flushPendingBuffers();
