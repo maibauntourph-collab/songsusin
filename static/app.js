@@ -1403,6 +1403,10 @@ function initMediaSourceFallback() {
 }
 
 function flushPendingBuffers() {
+    if (sourceBuffer) console.log('sourceBuffer.updating:', sourceBuffer.updating);
+    if (mediaSource) console.log('mediaSource.readyState:', mediaSource.readyState);
+    console.log('sourceBufferReady:', sourceBufferReady);
+
     if (!sourceBufferReady || !sourceBuffer || sourceBuffer.updating) return;
 
     // Safety Check: MediaSource must be open
@@ -1438,6 +1442,21 @@ function flushPendingBuffers() {
     }
 }
 
+// --- Web Audio API Playback (Low Latency Fallback) ---
+async function playAudioChunk(arrayBuffer) {
+    if (!audioCtx) initAudioContext();
+    if (audioCtx.state === 'suspended') try { await audioCtx.resume(); } catch (e) { }
+
+    try {
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioCtx.destination);
+        source.start(0);
+        els.touristStatus.textContent = "Playing (Web Audio)";
+    } catch (e) { }
+}
+
 function appendToStream(data) {
     const toArrayBuffer = (input) => {
         if (input instanceof ArrayBuffer) return Promise.resolve(input);
@@ -1448,59 +1467,22 @@ function appendToStream(data) {
 
     toArrayBuffer(data).then(buffer => {
         if (!buffer) return;
-
-        pendingBuffers.push(buffer);
-
-        // STALL DETECTION: If buffer allows to grow too large, the MSE is likely stuck.
-        if (pendingBuffers.length > 50) {
-            log("[Critical] Buffer Stall Detected (50+ chunks). Force resetting MediaSource...");
-            // Force reset to unstick the pipeline
-            resetFallbackState();
-            return;
-        }
-
-        flushPendingBuffers();
+        playAudioChunk(buffer);
     });
 }
 
+function flushPendingBuffers() { } // Disabled
+
 socket.on('audio_init', (data) => {
-    // Ignore audio if tourist has stopped listening
-    if (!touristAudioActive) return;
-
-    log("Received audio init segment from server");
-
-    const toArrayBuffer = (input) => {
-        if (input instanceof ArrayBuffer) return Promise.resolve(input);
-        if (input instanceof Blob) return input.arrayBuffer();
-        if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
-        return Promise.resolve(null);
-    };
-
-    toArrayBuffer(data).then(buffer => {
-        if (!buffer) return;
-
-        pendingBuffers.unshift(buffer);
-        initReceived = true;
-        log("Init segment prepended, " + pendingBuffers.length + " buffers queued");
-        flushPendingBuffers();
-    });
+    log("Audio Init received (Web Audio Mode - Ignored)");
 });
 
 socket.on('audio_chunk', (data) => {
-    // Ignore audio if tourist has stopped listening
     if (!touristAudioActive) return;
-
     rxBytes += data.byteLength || data.size || 0;
     updateCounters();
 
-    if (!isFallbackActive) {
-        isFallbackActive = true;
-        els.touristStatus.textContent = "Buffering audio...";
-        log("Starting MediaSource fallback stream");
-        initMediaSourceFallback();
-        socket.emit('request_audio_init');
-    }
-
+    // Direct feed
     appendToStream(data);
 });
 
