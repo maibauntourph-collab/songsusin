@@ -643,8 +643,13 @@ window.startBroadcast = async function () {
         if (audioMode === 'recorder') {
             log("[Recorder Mode] STT disabled - using MediaRecorder for audio");
             const sttStatus = document.getElementById('stt-status');
-            if (sttStatus) sttStatus.textContent = "🔊 Recorder Mode: Audio streaming (No STT)";
-            updateGuideTranscriptUI("🔊 Recorder Mode - Audio streaming without transcription", false);
+            if (sttStatus) sttStatus.textContent = "🔊 레코더 모드: 오디오 스트리밍 (STT 미지원)";
+            updateGuideTranscriptUI("🔊 레코더 모드 - 오디오 스트리밍 중 (자막 지원 안됨)", false);
+
+            // ✅ 추가: Recorder 시작!
+            setupFallbackRecorder(localStream);
+            els.guideStatus.textContent = "방송 중 (레코더 모드)...";
+            return;  // STT/WebRTC 설정 스킵
         } else if (offlineMode) {
             log("[Offline Mode] STT disabled - audio only streaming");
             const sttStatus = document.getElementById('stt-status');
