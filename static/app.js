@@ -1444,83 +1444,73 @@ function flushPendingBuffers() {
 
 // --- Web Audio API Playback (Low Latency Fallback) ---
 // --- Web Audio API Playback (Continuous & Scheduled) ---
-class ContinuousAudioPlayer {
+// --- SimpleAudioStreamer: Robust 3-Mode Playback ---
+class SimpleAudioStreamer {
     constructor() {
-        this.context = null;
-        this.gainNode = null;
-        this.nextStartTime = 0;
-        this.stats = { received: 0, played: 0, errors: 0 };
-        this.isInitialized = false;
+        this.mode = 'blob'; // Defaulting to Blob as requested for "Magic Fix"
+        this.audioCtx = null;
+        this.queue = [];
+        this.isPlaying = false;
+        this.activeElements = [];
     }
 
     init() {
-        if (this.isInitialized) return;
-        this.context = new (window.AudioContext || window.webkitAudioContext)();
-        this.gainNode = this.context.createGain();
-        this.gainNode.gain.value = 1.0; // Volume 0.0 ~ 1.0
-        this.gainNode.connect(this.context.destination);
-        this.isInitialized = true;
-        log("[AudioPlayer] Initialized. Context State: " + this.context.state);
+        log("[Streamer] Initialized in mode: " + this.mode);
+        // Clean up any old elements
+        if (this.activeElements) {
+            this.activeElements.forEach(el => {
+                try { document.body.removeChild(el); } catch (e) { }
+            });
+        }
+        this.activeElements = [];
+    }
 
-        // Resume on interaction (iOS Policy)
-        if (this.context.state === 'suspended') {
-            const unlock = () => {
-                this.context.resume().then(() => log("AudioContext Resumed"));
-                document.body.removeEventListener('click', unlock);
-            };
-            document.body.addEventListener('click', unlock);
+    playChunk(data) {
+        // Mode switch logic could go here, but focusing on Blob Mode as requested
+        if (this.mode === 'blob') {
+            this.playWithBlob(data);
         }
     }
 
-    async playChunk(data) {
-        if (!this.isInitialized) this.init();
-        if (this.context.state === 'suspended') await this.context.resume();
+    playWithBlob(data) {
+        // 1. Convert to Blob (WebM/Opus)
+        const blob = new Blob([data], { type: 'audio/webm;codecs=opus' });
+        const url = URL.createObjectURL(blob);
 
-        this.stats.received++;
+        // 2. Create Audit Element
+        const audio = new Audio();
+        audio.src = url;
+        audio.playbackRate = 1.0;
 
-        try {
-            const arrayBuffer = await this.toArrayBuffer(data);
-            if (!arrayBuffer) return;
+        // 3. Play immediately
+        audio.play().then(() => {
+            els.touristStatus.textContent = "재생 중 🔊 (Blob)";
+        }).catch(e => {
+            // log("Blob Play Error: " + e);
+        });
 
-            // Decode asynchronously
-            const audioBuffer = await this.context.decodeAudioData(arrayBuffer.slice(0));
-
-            const source = this.context.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(this.gainNode);
-
-            // Scheduling: Sequential Playback
-            const currentTime = this.context.currentTime;
-            // Drift Correction: If next start time is in the past, catch up
-            if (this.nextStartTime < currentTime) {
-                this.nextStartTime = currentTime;
-            }
-
-            source.start(this.nextStartTime);
-            this.nextStartTime += audioBuffer.duration;
-
-            this.stats.played++;
-            els.touristStatus.textContent = `재생 중 🔊 (RX:${this.stats.received})`;
-
-        } catch (e) {
-            this.stats.errors++;
-            // console.error("Audio Decode Error:", e);
-        }
-    }
-
-    async toArrayBuffer(input) {
-        if (input instanceof ArrayBuffer) return input;
-        if (input instanceof Blob) return await input.arrayBuffer();
-        if (input.buffer instanceof ArrayBuffer) return input.buffer;
-        return null; // Should not happen with validated input
+        // 4. Cleanup
+        audio.onended = () => {
+            URL.revokeObjectURL(url);
+        };
     }
 }
 
-const player = new ContinuousAudioPlayer();
-// player.init(); // Defer until user interaction if possible, or init here
+const streamer = new SimpleAudioStreamer();
+streamer.init();
 
 function appendToStream(data) {
-    player.playChunk(data);
+    const toArrayBuffer = (input) => {
+        if (input instanceof ArrayBuffer) return Promise.resolve(input);
+        if (input instanceof Blob) return input.arrayBuffer();
+        if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
+        return Promise.resolve(null);
+    };
+
+    toArrayBuffer(data).then(buffer => {
+        if (!buffer) return;
+        streamer.playChunk(buffer);
+    });
 }
 
 function flushPendingBuffers() { } // Disabled
@@ -1534,8 +1524,8 @@ socket.on('audio_chunk', (data) => {
     rxBytes += data.byteLength || data.size || 0;
     updateCounters();
 
-    // Use Player Class
-    player.playChunk(data);
+    // Use Streamer
+    appendToStream(data);
 });
 
 
