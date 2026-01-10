@@ -1443,44 +1443,90 @@ function flushPendingBuffers() {
 }
 
 // --- Web Audio API Playback (Low Latency Fallback) ---
-async function playAudioChunk(arrayBuffer) {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') {
-        try {
-            await audioCtx.resume();
-        } catch (e) { }
+// --- Web Audio API Playback (Continuous & Scheduled) ---
+class ContinuousAudioPlayer {
+    constructor() {
+        this.context = null;
+        this.gainNode = null;
+        this.nextStartTime = 0;
+        this.stats = { received: 0, played: 0, errors: 0 };
+        this.isInitialized = false;
     }
 
-    try {
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
-        const source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioCtx.destination);
-        source.start(0);
-        els.touristStatus.textContent = "재생 중 🔊";
-    } catch (e) {
-        // console.error(e);
+    init() {
+        if (this.isInitialized) return;
+        this.context = new (window.AudioContext || window.webkitAudioContext)();
+        this.gainNode = this.context.createGain();
+        this.gainNode.gain.value = 1.0; // Volume 0.0 ~ 1.0
+        this.gainNode.connect(this.context.destination);
+        this.isInitialized = true;
+        log("[AudioPlayer] Initialized. Context State: " + this.context.state);
+
+        // Resume on interaction (iOS Policy)
+        if (this.context.state === 'suspended') {
+            const unlock = () => {
+                this.context.resume().then(() => log("AudioContext Resumed"));
+                document.body.removeEventListener('click', unlock);
+            };
+            document.body.addEventListener('click', unlock);
+        }
+    }
+
+    async playChunk(data) {
+        if (!this.isInitialized) this.init();
+        if (this.context.state === 'suspended') await this.context.resume();
+
+        this.stats.received++;
+
+        try {
+            const arrayBuffer = await this.toArrayBuffer(data);
+            if (!arrayBuffer) return;
+
+            // Decode asynchronously
+            const audioBuffer = await this.context.decodeAudioData(arrayBuffer.slice(0));
+
+            const source = this.context.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this.gainNode);
+
+            // Scheduling: Sequential Playback
+            const currentTime = this.context.currentTime;
+            // Drift Correction: If next start time is in the past, catch up
+            if (this.nextStartTime < currentTime) {
+                this.nextStartTime = currentTime;
+            }
+
+            source.start(this.nextStartTime);
+            this.nextStartTime += audioBuffer.duration;
+
+            this.stats.played++;
+            els.touristStatus.textContent = `재생 중 🔊 (RX:${this.stats.received})`;
+
+        } catch (e) {
+            this.stats.errors++;
+            // console.error("Audio Decode Error:", e);
+        }
+    }
+
+    async toArrayBuffer(input) {
+        if (input instanceof ArrayBuffer) return input;
+        if (input instanceof Blob) return await input.arrayBuffer();
+        if (input.buffer instanceof ArrayBuffer) return input.buffer;
+        return null; // Should not happen with validated input
     }
 }
 
-function appendToStream(data) {
-    const toArrayBuffer = (input) => {
-        if (input instanceof ArrayBuffer) return Promise.resolve(input);
-        if (input instanceof Blob) return input.arrayBuffer();
-        if (input.buffer instanceof ArrayBuffer) return Promise.resolve(input.buffer);
-        return Promise.resolve(null);
-    };
+const player = new ContinuousAudioPlayer();
+// player.init(); // Defer until user interaction if possible, or init here
 
-    toArrayBuffer(data).then(buffer => {
-        if (!buffer) return;
-        playAudioChunk(buffer);
-    });
+function appendToStream(data) {
+    player.playChunk(data);
 }
 
 function flushPendingBuffers() { } // Disabled
 
 socket.on('audio_init', (data) => {
-    log("Audio Init received (Web Audio Mode - Ignored)");
+    log("Audio Init received (Ignored)");
 });
 
 socket.on('audio_chunk', (data) => {
@@ -1488,8 +1534,8 @@ socket.on('audio_chunk', (data) => {
     rxBytes += data.byteLength || data.size || 0;
     updateCounters();
 
-    // Direct feed
-    appendToStream(data);
+    // Use Player Class
+    player.playChunk(data);
 });
 
 
