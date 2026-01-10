@@ -199,7 +199,10 @@ window.updateTimesliceDisplay = function (val) {
 
 // Config
 const rtcConfig = {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+    ]
 };
 
 // UI Elements
@@ -584,11 +587,8 @@ window.startBroadcast = async function () {
                         echoCancellation: true,
                         noiseSuppression: true,
                         autoGainControl: true,
-                        // Specific Google constraints can cause OverconstrainedError on some Androids
-                        // googEchoCancellation: true, 
-                        // googAutoGainControl: true,
-                        // googNoiseSuppression: true,
-                        // googHighpassFilter: true
+                        sampleRate: 48000, // High quality sample rate
+                        channelCount: 1    // Mono is sufficient and stable
                     },
                     video: false
                 });
@@ -905,8 +905,9 @@ function updateGuideTranscriptUI(text, isFinal) {
 function getSupportedMimeType() {
     const types = [
         'audio/webm; codecs=opus',
+        'audio/ogg; codecs=opus',  // Reference class addition
         'audio/webm',
-        'audio/mp4; codecs=opus',  // 추가
+        'audio/mp4; codecs=opus',
         'audio/mp4'
     ];
     for (const type of types) {
