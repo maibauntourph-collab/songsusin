@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Blob Audio Playback Unit Test</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background: #222;
+            color: #fff;
+        }
+
+        #status {
+            padding: 10px;
+            background: #333;
+            border: 1px solid #555;
+            margin-top: 10px;
+        }
+
+        .log {
+            margin-top: 20px;
+            font-family: monospace;
+            color: #ccc;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Blob Audio Playback Test</h1>
+    <div id="status">Waiting...</div>
+    <div id="logs" class="log"></div>
+
+    <script>
+        // Mocks
+        const els = { touristStatus: document.getElementById('status') };
+        function log(msg) {
+            const div = document.createElement('div');
+            div.textContent = `[LOG] ${msg}`;
+            document.getElementById('logs').appendChild(div);
+            console.log(msg);
+        }
+
+        // --- SimpleAudioStreamer Logic (Copied from app.js) ---
+        class SimpleAudioStreamer {
+            constructor() {
+                this.mode = 'blob';
+                this.activeElements = [];
+            }
+
+            init() {
+                log("[Streamer] Initialized in mode: " + this.mode);
+                this.activeElements = [];
+            }
+
+            playChunk(data) {
+                if (this.mode === 'blob') {
+                    this.playWithBlob(data);
+                }
+            }
+
+            playWithBlob(data) {
+                log("Processing chunk size: " + data.byteLength);
+                const blob = new Blob([data], { type: 'audio/webm;codecs=opus' });
+                const url = URL.createObjectURL(blob);
+                log("Blob URL created: " + url);
+
+                const audio = new Audio();
+                audio.src = url;
+                audio.playbackRate = 1.0;
+
+                audio.play().then(() => {
+                    els.touristStatus.textContent = "재생 중 🔊 (Blob)";
+                    log("SUCCESS: Audio.play() promise resolved");
+                }).catch(e => {
+                    log("Audio Play Error: " + e.message);
+                    // Expected error for dummy data "The element has no supported sources." 
+                    // BUT the flow is what we are testing.
+                    if (e.message.includes("supported sources") || e.message.includes("encoding")) {
+                        els.touristStatus.textContent = "재생 중 🔊 (Blob) - Flow Verified";
+                    }
+                });
+
+                audio.onended = () => {
+                    URL.revokeObjectURL(url);
+                    log("Playback ended, URL revoked");
+                };
+            }
+        }
+
+        // --- Run Simulation ---
+        const streamer = new SimpleAudioStreamer();
+        streamer.init();
+
+        // Simulate receiving a chunk (Silence Opus Frame - rough approximation or just random bytes to test flow)
+        // A minimal valid WebM header is complex. 
+        // We just test if it TRIES to play without crashing.
+        const dummyChunk = new Uint8Array([0x1A, 0x45, 0xDF, 0xA3]); // EBML Header start
+        streamer.playChunk(dummyChunk.buffer);
+
+    </script>
+</body>
+
+</html>

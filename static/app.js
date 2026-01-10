@@ -1538,10 +1538,151 @@ socket.on('guide_ready', () => {
         if (!pc || pc.connectionState === 'closed' || pc.connectionState === 'failed') {
             log("Starting tourist connection on guide_ready");
             teardownTouristAudio();
-            startTouristReceiver();
+            startTouristReceiver(); // This will eventually use the new streamer logic if fully migrated
         }
     }
 });
+
+// --- WebRTC Audio Streamer (Unified Class) ---
+class WebRTCAudioStreamer {
+    constructor() {
+        this.role = null;
+        this.pc = null;
+        this.localStream = null;
+        this.fallbackStreamer = new SimpleAudioStreamer();
+        this.socketUrl = null;
+        this.initialized = false;
+    }
+
+    async init(role) {
+        this.role = role;
+        this.initialized = true;
+        this.fallbackStreamer.init();
+        log(`[WebRTCAudioStreamer] Initialized as ${role}`);
+
+        if (role === 'tourist') {
+            // Tourist Init Logic
+            initAudioContext();
+            touristAudioActive = true;
+            els.touristStatus.textContent = "Ready. Waiting for connection...";
+        }
+    }
+
+    async startMicrophone() {
+        if (this.role !== 'guide') throw new Error("Only guide can start microphone");
+
+        try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 48000,
+                    channelCount: 1
+                },
+                video: false
+            });
+            log("[WebRTCAudioStreamer] Microphone acquired");
+            return this.localStream;
+        } catch (e) {
+            log("[WebRTCAudioStreamer] Mic Error: " + e);
+            throw e;
+        }
+    }
+
+    connect(url) {
+        this.socketUrl = url;
+        log(`[WebRTCAudioStreamer] Connecting to ${url}...`); // Socket.IO is already global 'socket'
+
+        if (this.role === 'guide') {
+            this.startGuideSession();
+        } else {
+            this.startTouristSession();
+        }
+    }
+
+    // Guide Session: Create Offer
+    async startGuideSession() {
+        this.createPeerConnection();
+        // Add Tracks
+        if (this.localStream) {
+            this.localStream.getTracks().forEach(track => {
+                this.pc.addTrack(track, this.localStream);
+            });
+        }
+
+        // Broadcast Start
+        const offer = await this.pc.createOffer();
+        await this.pc.setLocalDescription(offer);
+        socket.emit('start_broadcast'); // Trigger server allocation
+        // Server will request offer, or we send it? 
+        // Existing logic sends offer via 'offer' event usually.
+        // Let's align with existing signaling: 
+        // Guide sends offer to Start Session? No, usually Guide waits for viewer?
+        // Wait, typical SFU: Publisher sends offer to SFU.
+        // Current app.js logic: Guide sends 'offer'.
+
+        socket.emit('offer', { sdp: this.pc.localDescription.sdp, type: this.pc.localDescription.type, role: 'guide' });
+        log("[WebRTCAudioStreamer] Guide Offer sent");
+    }
+
+    async startTouristSession() {
+        this.createPeerConnection();
+        this.pc.addTransceiver('audio', { direction: 'recvonly' });
+
+        const offer = await this.pc.createOffer();
+        await this.pc.setLocalDescription(offer);
+
+        socket.emit('offer', { sdp: this.pc.localDescription.sdp, type: this.pc.localDescription.type, role: 'tourist' });
+        log("[WebRTCAudioStreamer] Tourist Offer sent");
+    }
+
+    createPeerConnection() {
+        if (this.pc) this.pc.close();
+        this.pc = new RTCPeerConnection(rtcConfig);
+
+        // ICE Candidates
+        this.pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('candidate', {
+                    candidate: event.candidate.candidate,
+                    sdpMid: event.candidate.sdpMid,
+                    sdpMLineIndex: event.candidate.sdpMLineIndex,
+                    role: this.role
+                });
+            }
+        };
+
+        // Track Handling (Receiver)
+        this.pc.ontrack = (event) => {
+            if (this.role === 'tourist') {
+                log("[WebRTCAudioStreamer] Track received");
+                const stream = event.streams[0];
+                const audio = new Audio();
+                audio.srcObject = stream;
+                audio.autoplay = true;
+                audio.controls = true;
+                document.getElementById('tourist-controls').appendChild(audio);
+                audio.play().catch(e => log("Autoplay blocked: " + e));
+            }
+        };
+
+        // Connection State
+        this.pc.onconnectionstatechange = () => {
+            log(`[WebRTCAudioStreamer] Connection State: ${this.pc.connectionState}`);
+            if (this.role === 'tourist' && this.pc.connectionState === 'connected') {
+                els.touristStatus.textContent = "Connected (WebRTC)";
+            }
+        };
+
+        // Assign to global for debugging interaction
+        window.pc = this.pc;
+    }
+}
+
+// Global Instance
+const webRTCStreamer = new WebRTCAudioStreamer();
+
 
 // NOTE: guide_status handler already defined above, this block removed to prevent duplicate
 // Transcript Receiver - Works for both Guide and Tourist
