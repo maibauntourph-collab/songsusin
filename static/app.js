@@ -1444,8 +1444,12 @@ function flushPendingBuffers() {
 
 // --- Web Audio API Playback (Low Latency Fallback) ---
 async function playAudioChunk(arrayBuffer) {
-    if (!audioCtx) initAudioContext();
-    if (audioCtx.state === 'suspended') try { await audioCtx.resume(); } catch (e) { }
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+        try {
+            await audioCtx.resume();
+        } catch (e) { }
+    }
 
     try {
         const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
@@ -1453,8 +1457,10 @@ async function playAudioChunk(arrayBuffer) {
         source.buffer = audioBuffer;
         source.connect(audioCtx.destination);
         source.start(0);
-        els.touristStatus.textContent = "Playing (Web Audio)";
-    } catch (e) { }
+        els.touristStatus.textContent = "재생 중 🔊";
+    } catch (e) {
+        // console.error(e);
+    }
 }
 
 function appendToStream(data) {
