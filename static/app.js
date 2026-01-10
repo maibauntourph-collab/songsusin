@@ -904,12 +904,10 @@ function updateGuideTranscriptUI(text, isFinal) {
 
 function getSupportedMimeType() {
     const types = [
-        'audio/webm;codecs=opus', // ✅ WebM 우선 (더 호환성 좋음)
+        'audio/webm; codecs=opus',
         'audio/webm',
-        'audio/mp4', // iOS 호환
-        'audio/mp4; codecs=opus',
-        'audio/ogg;codecs=opus',
-        'audio/aac'
+        'audio/mp4; codecs=opus',  // 추가
+        'audio/mp4'
     ];
     for (const type of types) {
         if (MediaRecorder.isTypeSupported(type)) {
